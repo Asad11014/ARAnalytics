@@ -1,0 +1,13 @@
+{
+  "name": "mintsoft-replenishment",
+  "version": "2.0.0",
+  "description": "Replenishment planner for Mintsoft 3PL clients",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "uuid": "^9.0.0"
+  }
+}

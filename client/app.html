@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Replenishment Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f6fa;
+    --surface: #ffffff;
+    --surface2: #eef0f7;
+    --border: #d8dbe8;
+    --accent: #1F22AC;
+    --accent-hover: #2529c9;
+    --accent2: #c79a51;
+    --text: #1a1c2e;
+    --text-muted: #6b7280;
+    --text-dim: #b0b5c8;
+    --danger: #e03355;
+    --warning: #c79a51;
+    --radius: 8px;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      linear-gradient(rgba(31,34,172,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(31,34,172,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    font-family: var(--sans);
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 2px solid var(--accent);
+    box-shadow: 0 2px 12px rgba(31,34,172,0.07);
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo { display: flex; align-items: center; gap: 12px; }
+
+  .logo-mark {
+    width: 36px; height: 36px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 16px; color: #fff;
+  }
+
+  .logo h1 { font-size: 16px; font-weight: 800; color: var(--text); letter-spacing: -0.3px; }
+  .logo span { font-size: 10px; font-family: var(--mono); color: var(--text-muted); letter-spacing: 1px; display: block; margin-top: 1px; }
+
+  .header-right { display: flex; align-items: center; gap: 16px; }
+
+  .user-info { font-size: 12px; font-family: var(--mono); color: var(--text-muted); }
+  .user-info strong { color: var(--text); }
+
+  .logout-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .logout-btn:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* ── Layout ── */
+  .container { max-width: 1200px; margin: 0 auto; padding: 28px 24px; }
+
+  /* ── Config panel ── */
+  .config-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+
+  .panel-title {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  .fields-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+  }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+
+  label {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  input, select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 9px 12px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+  }
+
+  input:focus, select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(31,34,172,0.08);
+  }
+
+  select option { background: var(--surface); }
+
+  .run-btn {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 10px 22px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    white-space: nowrap;
+    align-self: flex-end;
+  }
+  .run-btn:hover { background: var(--accent-hover); }
+  .run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Status bar ── */
+  .status-bar {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 11px 16px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 20px;
+  }
+  .status-bar.show { display: flex; }
+  .status-bar.error { border-color: var(--danger); color: var(--danger); }
+  .status-bar.success { border-color: var(--accent); color: var(--accent); }
+
+  .spinner {
+    width: 13px; height: 13px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Stats row ── */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+  }
+  .stat-label { font-size: 10px; font-family: var(--mono); color: var(--text-muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+  .stat-value { font-size: 26px; font-weight: 800; color: var(--text); line-height: 1; }
+  .stat-value.danger { color: var(--danger); }
+  .stat-value.warning { color: var(--warning); }
+  .stat-value.good { color: var(--accent); }
+
+  /* ── Results header ── */
+  .results-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .results-title { font-size: 10px; font-family: var(--mono); color: var(--accent); letter-spacing: 2px; text-transform: uppercase; }
+  .results-meta { font-size: 11px; font-family: var(--mono); color: var(--text-muted); }
+
+  .export-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .export-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    margin-bottom: 32px;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+
+  thead th {
+    background: var(--surface2);
+    padding: 11px 14px;
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+  }
+  thead th:hover { color: var(--accent); }
+  thead th.sorted { color: var(--accent); }
+  thead th .sort-icon { margin-left: 4px; opacity: 0.5; }
+  thead th.sorted .sort-icon { opacity: 1; }
+
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+
+  td { padding: 12px 14px; font-family: var(--mono); color: var(--text); vertical-align: middle; }
+  td.number { text-align: right; }
+  td.order-qty { text-align: right; font-weight: 700; font-size: 13px; color: var(--accent); }
+  td.no-order { text-align: right; color: var(--text-dim); }
+  td.name { color: var(--text-muted); font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .days-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .days-bar { height: 4px; border-radius: 2px; background: var(--border); flex: 1; min-width: 50px; overflow: hidden; }
+  .days-bar-fill { height: 100%; border-radius: 2px; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .badge.critical { background: rgba(224,51,85,0.1); color: var(--danger); border: 1px solid rgba(224,51,85,0.3); }
+  .badge.low      { background: rgba(199,154,81,0.12); color: #a07830; border: 1px solid rgba(199,154,81,0.35); }
+  .badge.ok       { background: rgba(31,34,172,0.08); color: var(--accent); border: 1px solid rgba(31,34,172,0.2); }
+  .badge.fine     { background: rgba(107,114,128,0.08); color: var(--text-muted); border: 1px solid var(--border); }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  .no-results { text-align: center; padding: 48px; color: var(--text-muted); font-family: var(--mono); font-size: 13px; }
+
+  /* ── Search ── */
+  .search-wrap { position: relative; }
+  .search-wrap input { padding-left: 32px; }
+  .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-dim); font-size: 13px; pointer-events: none; }
+
+  @media (max-width: 900px) {
+    .fields-grid { grid-template-columns: 1fr 1fr; }
+    .stats-row { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 600px) {
+    .fields-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">R</div>
+    <div>
+      <h1>Replenishment Planner</h1>
+      <span>POWERED BY MINTSOFT</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="user-info">Signed in as <strong id="usernameDisplay">—</strong></div>
+    <button class="logout-btn" onclick="logout()">Sign Out</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="config-panel">
+    <div class="panel-title">▸ Report Settings</div>
+    <div class="fields-grid">
+
+      <div class="field">
+        <label>Warehouse ID</label>
+        <input type="text" id="warehouseId" placeholder="e.g. 3">
+      </div>
+
+      <div class="field" id="clientField" style="display:none">
+        <label>Client</label>
+        <select id="clientSelect">
+          <option value="">— Select a client —</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Velocity Window (days)</label>
+        <input type="number" id="velocityDays" value="30" min="1" max="365">
+      </div>
+
+      <div class="field">
+        <label>Coverage Target (days)</label>
+        <input type="number" id="coverageDays" value="60" min="1" max="365">
+      </div>
+
+      <div class="field">
+        <label>Lead Time (days)</label>
+        <input type="number" id="leadTime" value="14" min="0" max="365">
+      </div>
+
+      <div class="field" style="grid-column: 1 / -1; display:flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 4px;">
+        <div class="search-wrap" style="flex:1; max-width: 320px;">
+          <span class="search-icon">⌕</span>
+          <input type="text" id="searchInput" placeholder="Filter by SKU or product name…" oninput="filterTable()">
+        </div>
+        <button class="run-btn" id="runBtn" onclick="runReport()">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Generate Report
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="status-bar" id="statusBar">
+    <div class="spinner" id="spinner"></div>
+    <span id="statusMsg">—</span>
+  </div>
+
+  <div id="results" style="display:none">
+    <div class="results-header">
+      <div class="results-title">▸ Results</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="results-meta" id="resultsMeta"></div>
+        <button class="export-btn" onclick="exportCSV()">↓ Export CSV</button>
+      </div>
+    </div>
+
+    <div class="stats-row" id="statsRow"></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortBy('sku')">SKU <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('name')">Product Name <span class="sort-icon">↕</span></th>
+            <th class="number" onclick="sortBy('stock')">Stock <span class="sort-icon">↕</span></th>
+            <th class="number" onclick="sortBy('totalSold')">Units Sold <span class="sort-icon">↕</span></th>
+            <th class="number" onclick="sortBy('dailyVel')">Daily Velocity <span class="sort-icon">↕</span></th>
+            <th onclick="sortBy('daysLeft')">Days Remaining <span class="sort-icon">↕</span></th>
+            <th class="number" onclick="sortBy('leadTime')">Lead Time <span class="sort-icon">↕</span></th>
+            <th class="number" onclick="sortBy('orderQty')">Order Qty <span class="sort-icon">↕</span></th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let reportData  = [];
+  let sortKey     = 'orderQty';
+  let sortDir     = -1; // -1 = desc, 1 = asc
+  let coverageDaysVal = 60;
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  let sessionData = null;
+
+  window.onload = async () => {
+    try {
+      const res  = await fetch('/api/me');
+      const data = await res.json();
+      if (!res.ok) { window.location.href = '/'; return; }
+      sessionData = data;
+      document.getElementById('usernameDisplay').textContent = data.username;
+
+      if (data.isWarehouse && data.clients && data.clients.length > 0) {
+        // Populate client dropdown
+        const select = document.getElementById('clientSelect');
+        data.clients
+          .filter(c => (c.ID || c.id) && (c.Name || c.name))
+          .sort((a, b) => (a.Name || a.name).localeCompare(b.Name || b.name))
+          .forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.ID || c.id;
+            opt.textContent = c.Name || c.name;
+            select.appendChild(opt);
+          });
+        document.getElementById('clientField').style.display = 'flex';
+      }
+    } catch (e) {
+      window.location.href = '/';
+    }
+  };
+
+  // ── Auth ───────────────────────────────────────────────────────────────────
+  async function logout() {
+    await fetch('/api/logout', { method: 'POST' });
+    window.location.href = '/';
+  }
+
+  // ── Status helpers ─────────────────────────────────────────────────────────
+  function setStatus(msg, type = 'loading') {
+    const bar  = document.getElementById('statusBar');
+    const msgEl = document.getElementById('statusMsg');
+    const spin  = document.getElementById('spinner');
+    bar.className = 'status-bar show';
+    if (type === 'error')   bar.classList.add('error');
+    if (type === 'success') bar.classList.add('success');
+    msgEl.textContent = msg;
+    spin.style.display = type === 'loading' ? 'block' : 'none';
+  }
+
+  // ── Run report ─────────────────────────────────────────────────────────────
+  async function runReport() {
+    const warehouseId  = document.getElementById('warehouseId').value.trim();
+    const velocityDays = parseInt(document.getElementById('velocityDays').value);
+    const coverageDays = parseInt(document.getElementById('coverageDays').value);
+    const leadTime     = parseInt(document.getElementById('leadTime').value);
+    coverageDaysVal    = coverageDays;
+
+    if (!warehouseId) { setStatus('Please enter a Warehouse ID.', 'error'); return; }
+
+    // For warehouse users, require a client to be selected
+    if (sessionData && sessionData.isWarehouse) {
+      const selectedClient = document.getElementById('clientSelect').value;
+      if (!selectedClient) { setStatus('Please select a client.', 'error'); return; }
+    }
+
+    const btn = document.getElementById('runBtn');
+    btn.disabled = true;
+    document.getElementById('results').style.display = 'none';
+
+    const toDate   = new Date();
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - velocityDays);
+    const fmt = d => d.toISOString().split('T')[0];
+
+    try {
+      // For warehouse users, use the selected client; for client users, server uses session clientId
+      const selectedClientId = sessionData && sessionData.isWarehouse
+        ? document.getElementById('clientSelect').value
+        : '';
+
+      // 1. Fetch stock levels
+      setStatus('Fetching stock levels…');
+      const stockParams = new URLSearchParams({ warehouseId });
+      if (selectedClientId) stockParams.set('clientId', selectedClientId);
+      const stockRes = await fetch(`/api/stock?${stockParams}`);
+      if (!stockRes.ok) throw new Error('Failed to fetch stock levels');
+      const stockData = await stockRes.json();
+
+      // 2. Fetch all orders via SSE stream
+      const orders = await fetchOrdersWithProgress(warehouseId, fmt(fromDate), fmt(toDate), selectedClientId);
+
+      // 3. Calculate replenishment
+      setStatus('Calculating replenishment…');
+      reportData = buildReport(orders, stockData, { velocityDays, coverageDays, leadTime });
+
+      renderResults(coverageDays);
+      setStatus(`Done — ${reportData.length} SKUs analysed.`, 'success');
+
+    } catch (err) {
+      setStatus(`Error: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  // ── Fetch orders with SSE progress ─────────────────────────────────────────
+  function fetchOrdersWithProgress(warehouseId, dateFrom, dateTo, clientId = '') {
+    return new Promise((resolve, reject) => {
+      const params = new URLSearchParams({ warehouseId, dateFrom, dateTo });
+      if (clientId) params.set('clientId', clientId);
+      const url = `/api/orders-all?${params}`;
+
+      fetch(url).then(res => {
+        if (!res.ok) { reject(new Error(`Orders fetch failed: ${res.status}`)); return; }
+        const reader  = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        function read() {
+          reader.read().then(({ done, value }) => {
+            if (done) return;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              try {
+                const msg = JSON.parse(line.slice(6));
+                if (msg.type === 'progress') {
+                  if (msg.stage === 'items') {
+                    setStatus(`Fetching order items… ${Math.min(msg.done, msg.total)}/${msg.total}`);
+                  } else {
+                    setStatus(`Fetching orders… page ${msg.page} (${msg.total} so far)`);
+                  }
+                } else if (msg.type === 'done') {
+                  resolve(msg.orders);
+                  return;
+                } else if (msg.type === 'error') {
+                  reject(new Error(msg.message));
+                  return;
+                }
+              } catch(e) {}
+            }
+            read();
+          }).catch(reject);
+        }
+        read();
+      }).catch(reject);
+    });
+  }
+
+  // ── Build report data ──────────────────────────────────────────────────────
+  function buildReport(orders, stockLevels, { velocityDays, coverageDays, leadTime }) {
+    // Build SKU sales map
+    const skuSales = {};
+    for (const order of orders) {
+      for (const item of (order.OrderItems || [])) {
+        const sku = item.SKU || item.Sku || item.sku;
+        const qty = item.Quantity || item.quantity || 0;
+        if (sku && qty) skuSales[sku] = (skuSales[sku] || 0) + qty;
+      }
+    }
+
+    const results = [];
+    for (const item of stockLevels) {
+      const sku      = item.SKU || item.Sku || '';
+      const stock    = item.Level || 0;
+      const name     = item.Name || item.ProductName || '';
+      const totalSold = skuSales[sku] || 0;
+      const dailyVel  = totalSold / velocityDays;
+      const daysLeft  = dailyVel > 0 ? Math.round(stock / dailyVel) : null;
+      const orderQty  = Math.max(0, Math.ceil((coverageDays + leadTime) * dailyVel - stock));
+
+      if (stock === 0 && totalSold === 0) continue;
+
+      results.push({ sku, name, stock, totalSold, dailyVel: Math.round(dailyVel * 100) / 100, daysLeft, leadTime, orderQty });
+    }
+
+    return results.sort((a, b) => {
+      if (a.orderQty > 0 && b.orderQty === 0) return -1;
+      if (b.orderQty > 0 && a.orderQty === 0) return 1;
+      if (a.daysLeft === null) return 1;
+      if (b.daysLeft === null) return -1;
+      return a.daysLeft - b.daysLeft;
+    });
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function getUrgency(row) {
+    if (row.orderQty === 0) return 'fine';
+    if (row.daysLeft !== null && row.daysLeft <= row.leadTime) return 'critical';
+    if (row.daysLeft !== null && row.daysLeft < coverageDaysVal / 2) return 'low';
+    return 'ok';
+  }
+
+  function renderResults(coverageDays) {
+    document.getElementById('results').style.display = 'block';
+
+    const needsOrder = reportData.filter(r => r.orderQty > 0).length;
+    const critical   = reportData.filter(r => getUrgency(r) === 'critical').length;
+    const totalUnits = reportData.reduce((s, r) => s + r.orderQty, 0);
+
+    document.getElementById('resultsMeta').textContent =
+      `${reportData.length} SKUs · ${new Date().toLocaleString('en-GB')}`;
+
+    document.getElementById('statsRow').innerHTML = `
+      <div class="stat-card"><div class="stat-label">SKUs Analysed</div><div class="stat-value">${reportData.length}</div></div>
+      <div class="stat-card"><div class="stat-label">Need Ordering</div><div class="stat-value ${needsOrder > 0 ? 'warning' : 'good'}">${needsOrder}</div></div>
+      <div class="stat-card"><div class="stat-label">Critical</div><div class="stat-value ${critical > 0 ? 'danger' : 'good'}">${critical}</div></div>
+      <div class="stat-card"><div class="stat-label">Total Units to Order</div><div class="stat-value">${totalUnits.toLocaleString()}</div></div>
+    `;
+
+    renderTable();
+  }
+
+  function renderTable() {
+    const tbody      = document.getElementById('tableBody');
+    const search     = document.getElementById('searchInput').value.toLowerCase();
+    const filtered   = reportData.filter(r =>
+      !search || r.sku.toLowerCase().includes(search) || r.name.toLowerCase().includes(search)
+    );
+
+    // Sort
+    filtered.sort((a, b) => {
+      let av = a[sortKey], bv = b[sortKey];
+      if (av === null) av = sortDir > 0 ? Infinity : -Infinity;
+      if (bv === null) bv = sortDir > 0 ? Infinity : -Infinity;
+      if (typeof av === 'string') return av.localeCompare(bv) * sortDir;
+      return (av - bv) * sortDir;
+    });
+
+    if (!filtered.length) {
+      tbody.innerHTML = `<tr><td colspan="9"><div class="no-results">No SKUs match your search.</div></td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = filtered.map(row => {
+      const urgency  = getUrgency(row);
+      const barPct   = row.daysLeft === null ? 100 : Math.min(100, (row.daysLeft / coverageDaysVal) * 100);
+      const barColor = urgency === 'critical' ? 'var(--danger)' : urgency === 'low' ? 'var(--warning)' : 'var(--accent)';
+      const daysDisp = row.daysLeft === null ? '∞' : row.daysLeft + 'd';
+
+      const badges = {
+        critical: `<span class="badge critical"><span class="dot"></span>Critical</span>`,
+        low:      `<span class="badge low"><span class="dot"></span>Low Stock</span>`,
+        ok:       `<span class="badge ok"><span class="dot"></span>Order Soon</span>`,
+        fine:     `<span class="badge fine">Sufficient</span>`
+      };
+
+      return `<tr>
+        <td>${row.sku}</td>
+        <td class="name" title="${row.name}">${row.name || '—'}</td>
+        <td class="number">${row.stock.toLocaleString()}</td>
+        <td class="number" style="color:var(--accent2);font-weight:500">${row.totalSold.toLocaleString()}</td>
+        <td class="number">${row.dailyVel}</td>
+        <td>
+          <div class="days-bar-wrap">
+            <div class="days-bar"><div class="days-bar-fill" style="width:${barPct}%;background:${barColor}"></div></div>
+            <span style="font-size:11px;color:var(--text-muted);min-width:32px;text-align:right">${daysDisp}</span>
+          </div>
+        </td>
+        <td class="number">${row.leadTime}d</td>
+        ${row.orderQty > 0
+          ? `<td class="order-qty">${row.orderQty.toLocaleString()}</td>`
+          : `<td class="no-order">—</td>`}
+        <td>${badges[urgency]}</td>
+      </tr>`;
+    }).join('');
+
+    // Update sort icons
+    document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+    const cols = ['sku','name','stock','totalSold','dailyVel','daysLeft','leadTime','orderQty'];
+    const idx = cols.indexOf(sortKey);
+    if (idx >= 0) {
+      const ths = document.querySelectorAll('thead th');
+      if (ths[idx]) {
+        ths[idx].classList.add('sorted');
+        ths[idx].querySelector('.sort-icon').textContent = sortDir > 0 ? '↑' : '↓';
+      }
+    }
+  }
+
+  // ── Sort ───────────────────────────────────────────────────────────────────
+  function sortBy(key) {
+    if (sortKey === key) sortDir *= -1;
+    else { sortKey = key; sortDir = -1; }
+    renderTable();
+  }
+
+  // ── Filter ─────────────────────────────────────────────────────────────────
+  function filterTable() { renderTable(); }
+
+  // ── Export CSV ─────────────────────────────────────────────────────────────
+  function exportCSV() {
+    if (!reportData.length) return;
+    const rows = [
+      ['SKU','Product Name','Stock','Units Sold','Daily Velocity','Days Remaining','Lead Time (days)','Order Qty','Status'],
+      ...reportData.map(r => [
+        r.sku, r.name, r.stock, r.totalSold, r.dailyVel,
+        r.daysLeft === null ? 'N/A' : r.daysLeft,
+        r.leadTime, r.orderQty, getUrgency(r)
+      ])
+    ];
+    const csv  = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a    = document.createElement('a');
+    a.href     = URL.createObjectURL(blob);
+    a.download = `replenishment-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  }
+</script>
+</body>
+</html>

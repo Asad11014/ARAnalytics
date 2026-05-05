@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Replenishment Planner — Login</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f6fa;
+    --surface: #ffffff;
+    --border: #d8dbe8;
+    --accent: #1F22AC;
+    --accent-hover: #2529c9;
+    --accent2: #c79a51;
+    --text: #1a1c2e;
+    --text-muted: #6b7280;
+    --danger: #e03355;
+    --radius: 8px;
+    --mono: 'DM Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    background-image:
+      linear-gradient(rgba(31,34,172,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(31,34,172,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(31,34,172,0.08);
+    padding: 48px 40px;
+    width: 100%;
+    max-width: 420px;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+  }
+
+  .logo-mark {
+    width: 44px;
+    height: 44px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 20px;
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .logo-text h1 {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--text);
+    letter-spacing: -0.3px;
+  }
+
+  .logo-text p {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+
+  label {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  input {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 11px 14px;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+  }
+
+  input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(31,34,172,0.08);
+  }
+
+  .btn {
+    width: 100%;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius);
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 700;
+    padding: 13px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    margin-top: 8px;
+    letter-spacing: 0.3px;
+  }
+
+  .btn:hover { background: var(--accent-hover); }
+  .btn:active { transform: scale(0.99); }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .error {
+    background: rgba(224,51,85,0.08);
+    border: 1px solid rgba(224,51,85,0.25);
+    border-radius: var(--radius);
+    color: var(--danger);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 14px;
+    margin-top: 12px;
+    display: none;
+  }
+
+  .error.show { display: block; }
+
+  .hint {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    text-align: center;
+    margin-top: 20px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo">
+    <div class="logo-mark">R</div>
+    <div class="logo-text">
+      <h1>Replenishment Planner</h1>
+      <p>POWERED BY MINTSOFT</p>
+    </div>
+  </div>
+
+  <div class="field">
+    <label>Mintsoft Username</label>
+    <input type="text" id="username" placeholder="your@email.com" autocomplete="username">
+  </div>
+
+  <div class="field">
+    <label>Mintsoft Password</label>
+    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+  </div>
+
+  <button class="btn" id="loginBtn" onclick="login()">Sign In</button>
+
+  <div class="error" id="errorMsg"></div>
+
+  <p class="hint">Use your Mintsoft login credentials.<br>Your password is never stored.</p>
+</div>
+
+<script>
+  // Allow Enter key to submit
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter') login();
+  });
+
+  async function login() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    const btn      = document.getElementById('loginBtn');
+    const errorMsg = document.getElementById('errorMsg');
+
+    if (!username || !password) {
+      showError('Please enter your username and password.');
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Signing in…';
+    errorMsg.classList.remove('show');
+
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        showError(data.error || 'Login failed. Please try again.');
+        return;
+      }
+
+      // Redirect to app
+      window.location.href = '/app';
+
+    } catch (err) {
+      showError('Could not connect to server. Is it running?');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('errorMsg');
+    el.textContent = msg;
+    el.classList.add('show');
+  }
+</script>
+</body>
+</html>
