@@ -1,0 +1,804 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PF Forecaster</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #f5f6fa;
+        --surface: #ffffff;
+        --surface2: #eef0f7;
+        --border: #d8dbe8;
+        --accent: #1f22ac;
+        --accent-hover: #2529c9;
+        --accent2: #c79a51;
+        --text: #1a1c2e;
+        --text-muted: #6b7280;
+        --text-dim: #b0b5c8;
+        --danger: #e03355;
+        --warning: #c79a51;
+        --success: #16a34a;
+        --radius: 8px;
+        --mono: "DM Mono", monospace;
+        --sans: "Syne", sans-serif;
+        --nav-width: 240px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: var(--sans);
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+      }
+
+      /* ── Sidebar ── */
+      .sidebar {
+        width: var(--nav-width);
+        background: var(--surface);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        z-index: 50;
+      }
+
+      .sidebar-logo {
+        padding: 20px;
+        border-bottom: 2px solid var(--accent);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .logo-mark {
+        width: 32px;
+        height: 32px;
+        background: var(--accent);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 14px;
+        color: #fff;
+        flex-shrink: 0;
+      }
+
+      .logo-text {
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: -0.3px;
+      }
+      .logo-sub {
+        font-size: 9px;
+        font-family: var(--mono);
+        color: var(--text-muted);
+        letter-spacing: 1px;
+        text-transform: uppercase;
+      }
+
+      .nav-section-label {
+        font-size: 9px;
+        font-family: var(--mono);
+        color: var(--text-dim);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        padding: 16px 20px 6px;
+      }
+
+      .nav-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 20px;
+        cursor: pointer;
+        border-radius: 0;
+        transition: background 0.1s;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-muted);
+        border-left: 3px solid transparent;
+        text-decoration: none;
+      }
+
+      .nav-item:hover {
+        background: var(--surface2);
+        color: var(--text);
+      }
+      .nav-item.active {
+        background: var(--surface2);
+        color: var(--accent);
+        border-left-color: var(--accent);
+        font-weight: 600;
+      }
+
+      .nav-item .nav-icon {
+        font-size: 15px;
+        width: 20px;
+        text-align: center;
+        flex-shrink: 0;
+      }
+
+      .sidebar-footer {
+        margin-top: auto;
+        padding: 16px 20px;
+        border-top: 1px solid var(--border);
+      }
+
+      .user-info {
+        font-size: 11px;
+        font-family: var(--mono);
+        color: var(--text-muted);
+        margin-bottom: 8px;
+      }
+      .user-info strong {
+        color: var(--text);
+        display: block;
+        margin-bottom: 2px;
+        font-size: 12px;
+      }
+
+      .logout-btn {
+        width: 100%;
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        color: var(--text-muted);
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 7px;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-align: center;
+      }
+      .logout-btn:hover {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+
+      /* ── Main content ── */
+      .main {
+        margin-left: var(--nav-width);
+        flex: 1;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .topbar {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 0 28px;
+        height: 52px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: sticky;
+        top: 0;
+        z-index: 40;
+      }
+
+      .topbar-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text);
+      }
+      .topbar-sub {
+        font-size: 11px;
+        font-family: var(--mono);
+        color: var(--text-muted);
+        margin-top: 1px;
+      }
+
+      .content {
+        padding: 28px;
+        flex: 1;
+      }
+
+      /* ── Config panel ── */
+      .config-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px 24px;
+        margin-bottom: 20px;
+      }
+
+      .panel-label {
+        font-size: 9px;
+        font-family: var(--mono);
+        color: var(--accent);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 14px;
+      }
+
+      .fields-row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-end;
+        flex-wrap: wrap;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        min-width: 130px;
+      }
+      .field label {
+        font-size: 10px;
+        font-family: var(--mono);
+        color: var(--text-muted);
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+      }
+
+      input,
+      select {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 13px;
+        padding: 8px 11px;
+        outline: none;
+        transition:
+          border-color 0.15s,
+          box-shadow 0.15s;
+      }
+      input:focus,
+      select:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(31, 34, 172, 0.08);
+      }
+
+      .run-btn {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: var(--radius);
+        font-family: var(--sans);
+        font-size: 13px;
+        font-weight: 700;
+        padding: 9px 20px;
+        cursor: pointer;
+        transition: background 0.15s;
+        white-space: nowrap;
+        height: 36px;
+      }
+      .run-btn:hover {
+        background: var(--accent-hover);
+      }
+      .run-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      /* ── Status bar ── */
+      .status-bar {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 10px 14px;
+        display: none;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-bottom: 20px;
+      }
+      .status-bar.show {
+        display: flex;
+      }
+      .status-bar.error {
+        border-color: var(--danger);
+        color: var(--danger);
+      }
+      .status-bar.success {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      .spinner {
+        width: 12px;
+        height: 12px;
+        border: 2px solid var(--border);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+        flex-shrink: 0;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ── Stats row ── */
+      .stats-row {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 20px;
+        flex-wrap: wrap;
+      }
+
+      .stat-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 14px 18px;
+        min-width: 130px;
+        flex: 1;
+      }
+      .stat-label {
+        font-size: 9px;
+        font-family: var(--mono);
+        color: var(--text-muted);
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+      .stat-value {
+        font-size: 24px;
+        font-weight: 800;
+        line-height: 1;
+      }
+      .stat-value.accent {
+        color: var(--accent);
+      }
+      .stat-value.warning {
+        color: var(--warning);
+      }
+      .stat-value.danger {
+        color: var(--danger);
+      }
+      .stat-value.success {
+        color: var(--success);
+      }
+
+      /* ── Table ── */
+      .table-wrap {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+        margin-bottom: 28px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      thead th {
+        background: var(--surface2);
+        padding: 10px 14px;
+        text-align: left;
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--text-muted);
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+        cursor: pointer;
+        user-select: none;
+      }
+      thead th:hover {
+        color: var(--accent);
+      }
+      thead th.sorted {
+        color: var(--accent);
+      }
+      tbody tr {
+        border-bottom: 1px solid var(--border);
+        transition: background 0.1s;
+      }
+      tbody tr:last-child {
+        border-bottom: none;
+      }
+      tbody tr:hover {
+        background: var(--surface2);
+      }
+      td {
+        padding: 11px 14px;
+        font-family: var(--mono);
+        font-size: 12px;
+        vertical-align: middle;
+      }
+      td.right {
+        text-align: right;
+      }
+      td.muted {
+        color: var(--text-muted);
+        font-size: 11px;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      td.bold {
+        font-weight: 700;
+        font-size: 13px;
+      }
+
+      /* ── Badges ── */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 9px;
+        border-radius: 20px;
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        white-space: nowrap;
+        font-family: var(--mono);
+      }
+      .badge-danger {
+        background: rgba(224, 51, 85, 0.1);
+        color: var(--danger);
+        border: 1px solid rgba(224, 51, 85, 0.25);
+      }
+      .badge-warning {
+        background: rgba(199, 154, 81, 0.12);
+        color: #a07830;
+        border: 1px solid rgba(199, 154, 81, 0.3);
+      }
+      .badge-accent {
+        background: rgba(31, 34, 172, 0.08);
+        color: var(--accent);
+        border: 1px solid rgba(31, 34, 172, 0.2);
+      }
+      .badge-success {
+        background: rgba(22, 163, 74, 0.08);
+        color: var(--success);
+        border: 1px solid rgba(22, 163, 74, 0.2);
+      }
+      .badge-muted {
+        background: rgba(107, 114, 128, 0.08);
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+      }
+      .dot {
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      /* ── Bar ── */
+      .bar-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .bar {
+        height: 4px;
+        border-radius: 2px;
+        background: var(--border);
+        flex: 1;
+        min-width: 50px;
+        overflow: hidden;
+      }
+      .bar-fill {
+        height: 100%;
+        border-radius: 2px;
+      }
+
+      /* ── Export ── */
+      .export-btn {
+        background: transparent;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        color: var(--text-muted);
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 6px 12px;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .export-btn:hover {
+        border-color: var(--accent2);
+        color: var(--accent2);
+      }
+
+      /* ── Empty state ── */
+      .empty {
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-muted);
+        font-family: var(--mono);
+        font-size: 13px;
+      }
+      .empty .empty-icon {
+        font-size: 32px;
+        margin-bottom: 12px;
+      }
+
+      /* ── Client selector (warehouse users) ── */
+      #clientField {
+        display: none;
+      }
+
+      /* ── Results header ── */
+      .results-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 14px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .results-label {
+        font-size: 9px;
+        font-family: var(--mono);
+        color: var(--accent);
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
+      .results-meta {
+        font-size: 11px;
+        font-family: var(--mono);
+        color: var(--text-muted);
+      }
+
+      /* ── Search ── */
+      .search-wrap {
+        position: relative;
+      }
+      .search-wrap input {
+        padding-left: 28px;
+        width: 220px;
+      }
+      .search-icon {
+        position: absolute;
+        left: 9px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--text-dim);
+        pointer-events: none;
+        font-size: 13px;
+      }
+
+      /* ── Report placeholder ── */
+      .report-area {
+        display: none;
+      }
+      .report-area.active {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="sidebar-logo">
+        <div class="logo-mark">PF</div>
+        <div>
+          <div class="logo-text">PF Analytics</div>
+          <div class="logo-sub">Inventory intelligence, simplified.</div>
+        </div>
+      </div>
+
+      <div class="nav-section-label">Reports</div>
+      <div id="navItems"><!-- populated by JS --></div>
+
+      <div class="sidebar-footer">
+        <div class="user-info">
+          <strong id="usernameDisplay">—</strong>
+          Signed in
+        </div>
+        <button class="logout-btn" onclick="logout()">Sign Out</button>
+      </div>
+    </nav>
+
+    <!-- Main -->
+    <div class="main">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title" id="topbarTitle">Select a report</div>
+          <div class="topbar-sub" id="topbarSub">—</div>
+        </div>
+      </div>
+
+      <div class="content">
+        <!-- Global config (warehouse + client selectors) -->
+        <div class="config-panel" id="globalConfig">
+          <div class="panel-label">▸ Connection</div>
+          <div class="fields-row">
+            <div class="field">
+              <label>Warehouse ID</label>
+              <input
+                type="text"
+                id="warehouseId"
+                placeholder="e.g. 3"
+                style="width: 100px"
+              />
+            </div>
+            <div class="field" id="clientField">
+              <label>Client</label>
+              <select id="clientSelect" style="width: 200px">
+                <option value="">— Select client —</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status bar -->
+        <div class="status-bar" id="statusBar">
+          <div class="spinner" id="spinner"></div>
+          <span id="statusMsg">—</span>
+        </div>
+
+        <!-- Report areas — each report renders into its own div -->
+        <div id="reportContainer">
+          <div class="empty">
+            <div class="empty-icon">📊</div>
+            Select a report from the left to get started.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Load report modules -->
+    <script src="/reports/shared.js"></script>
+    <script src="/reports/replenishment.js"></script>
+    <script src="/reports/dead-stock.js"></script>
+    <script src="/reports/overstock.js"></script>
+    <script src="/reports/best-sellers.js"></script>
+    <script src="/reports/sales-trend.js"></script>
+
+    <script>
+      // ── App state ────────────────────────────────────────────────────────────
+      let session = null;
+      let activeReport = null;
+
+      // ── Init ─────────────────────────────────────────────────────────────────
+      window.onload = async () => {
+        try {
+          const res = await fetch("/api/me");
+          const data = await res.json();
+          if (!res.ok) {
+            window.location.href = "/";
+            return;
+          }
+          session = data;
+
+          document.getElementById("usernameDisplay").textContent =
+            data.username;
+
+          // Populate client dropdown for warehouse users
+          if (data.isWarehouse && data.clients?.length > 0) {
+            const select = document.getElementById("clientSelect");
+            data.clients
+              .filter((c) => (c.ID || c.id) && (c.Name || c.name))
+              .sort((a, b) =>
+                (a.Name || a.name).localeCompare(b.Name || b.name),
+              )
+              .forEach((c) => {
+                const opt = document.createElement("option");
+                opt.value = c.ID || c.id;
+                opt.textContent = c.Name || c.name;
+                select.appendChild(opt);
+              });
+            document.getElementById("clientField").style.display = "flex";
+          }
+
+          // Load report list and build nav
+          const reportsRes = await fetch("/api/reports");
+          const reportList = await reportsRes.json();
+          buildNav(reportList);
+        } catch (e) {
+          window.location.href = "/";
+        }
+      };
+
+      // ── Navigation ────────────────────────────────────────────────────────────
+      function buildNav(reportList) {
+        const nav = document.getElementById("navItems");
+        nav.innerHTML = reportList
+          .map(
+            (r) => `
+      <div class="nav-item" id="nav-${r.id}" onclick="selectReport('${r.id}')">
+        <span class="nav-icon">${r.icon}</span>
+        ${r.title}
+      </div>
+    `,
+          )
+          .join("");
+      }
+
+      function selectReport(id) {
+        // Update nav active state
+        document
+          .querySelectorAll(".nav-item")
+          .forEach((el) => el.classList.remove("active"));
+        const navEl = document.getElementById(`nav-${id}`);
+        if (navEl) navEl.classList.add("active");
+
+        activeReport = id;
+
+        // Find report module
+        const mod = window.REPORTS?.[id];
+        if (!mod) {
+          console.error("No client module for report:", id);
+          return;
+        }
+
+        // Update topbar
+        document.getElementById("topbarTitle").textContent = mod.title;
+        document.getElementById("topbarSub").textContent = mod.description;
+
+        // Clear status
+        setStatus("", null);
+
+        // Render report UI
+        document.getElementById("reportContainer").innerHTML = "";
+        mod.render(document.getElementById("reportContainer"));
+      }
+
+      // ── Shared helpers (exposed to report modules) ────────────────────────────
+      window.getConfig = () => ({
+        warehouseId: document.getElementById("warehouseId").value.trim(),
+        clientId: session?.isWarehouse
+          ? document.getElementById("clientSelect").value
+          : "",
+        session,
+      });
+
+      window.setStatus = (msg, type = "loading") => {
+        const bar = document.getElementById("statusBar");
+        const msgEl = document.getElementById("statusMsg");
+        const spin = document.getElementById("spinner");
+        if (!msg) {
+          bar.className = "status-bar";
+          return;
+        }
+        bar.className =
+          "status-bar show" +
+          (type === "error" ? " error" : type === "success" ? " success" : "");
+        msgEl.textContent = msg;
+        spin.style.display = type === "loading" ? "block" : "none";
+      };
+
+      window.validateConfig = () => {
+        const { warehouseId, clientId, session: s } = window.getConfig();
+        if (!warehouseId) {
+          setStatus("Please enter a Warehouse ID.", "error");
+          return false;
+        }
+        if (s?.isWarehouse && !clientId) {
+          setStatus("Please select a client.", "error");
+          return false;
+        }
+        return true;
+      };
+
+      // ── Auth ──────────────────────────────────────────────────────────────────
+      async function logout() {
+        await fetch("/api/logout", { method: "POST" });
+        window.location.href = "/";
+      }
+    </script>
+  </body>
+</html>
