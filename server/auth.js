@@ -56,6 +56,41 @@ function mintsoftAuth(username, password) {
   });
 }
 
+// Fetch the list of warehouses this API key can access
+function fetchWarehouses(apiKey) {
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.mintsoft.co.uk',
+      path: '/api/Warehouse',
+      method: 'GET',
+      headers: { 'ms-apikey': apiKey, 'User-Agent': 'MexecoReplenishmentTool/1.0' }
+    };
+    console.log('  fetchWarehouses: GET https://api.mintsoft.co.uk/api/Warehouse');
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        console.log(`  fetchWarehouses: status=${res.statusCode} body=${data.substring(0, 150)}`);
+        try {
+          const parsed = JSON.parse(data);
+          if (res.statusCode === 200 && Array.isArray(parsed)) {
+            const warehouses = parsed.map(w => ({
+              ID:   w.ID   || w.Id   || w.WarehouseId,
+              Name: w.Name || w.WarehouseName || w.ShortName || String(w.ID || w.Id)
+            })).filter(w => w.ID);
+            console.log(`  ✓ ${warehouses.length} warehouse(s) found`);
+            resolve(warehouses);
+          } else {
+            resolve([]);
+          }
+        } catch(e) { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.end();
+  });
+}
+
 // Detect whether the logged-in user is a warehouse admin or a client user.
 // Strategy: call a warehouse-only endpoint (/api/Client/List).
 // 200 = warehouse user (can see all clients)
@@ -123,7 +158,7 @@ function fetchClientProfile(apiKey) {
 
 // ── Session helpers ───────────────────────────────────────────────────────────
 
-function createSession(apiKey, clientId, username, isWarehouse = false, clients = []) {
+function createSession(apiKey, clientId, username, isWarehouse = false, clients = [], warehouses = []) {
   pruneExpiredSessions();
   const token = crypto.randomBytes(32).toString('hex');
   sessions[token] = {
@@ -131,7 +166,8 @@ function createSession(apiKey, clientId, username, isWarehouse = false, clients 
     clientId,
     username,
     isWarehouse,
-    clients,   // list of { ID, Name } for warehouse users
+    clients,    // list of { ID, Name } for warehouse users
+    warehouses, // list of { ID, Name } for all users
     expiresAt: Date.now() + SESSION_TTL_MS
   };
   return token;
@@ -200,6 +236,9 @@ async function login(req, res) {
     const { isWarehouse, clients } = await detectUserType(apiKey);
     console.log(`  User type: ${isWarehouse ? 'warehouse admin' : 'client user'}`);
 
+    // Fetch warehouses accessible to this user (runs for both user types)
+    const warehouses = await fetchWarehouses(apiKey);
+
     let clientId = null;
 
     if (isWarehouse) {
@@ -215,7 +254,7 @@ async function login(req, res) {
     }
 
     // Create session
-    const token = createSession(apiKey, clientId, username, isWarehouse, clients);
+    const token = createSession(apiKey, clientId, username, isWarehouse, clients, warehouses);
 
     res.writeHead(200, {
       'Content-Type': 'application/json',
@@ -226,7 +265,8 @@ async function login(req, res) {
       username,
       clientId,
       isWarehouse,
-      clients:     isWarehouse ? clients.map(c => ({ ID: c.ID || c.Id, Name: c.Name || c.ClientName || c.ShortName })) : []
+      clients:    isWarehouse ? clients.map(c => ({ ID: c.ID || c.Id, Name: c.Name || c.ClientName || c.ShortName })) : [],
+      warehouses: warehouses
     }));
 
   } catch (err) {
@@ -258,7 +298,8 @@ function me(req, res) {
     username:    session.username,
     clientId:    session.clientId,
     isWarehouse: session.isWarehouse || false,
-    clients:     session.clients || []
+    clients:     session.clients     || [],
+    warehouses:  session.warehouses  || []
   });
 }
 

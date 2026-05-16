@@ -626,14 +626,8 @@
         <div class="config-panel" id="globalConfig">
           <div class="panel-label">▸ Connection</div>
           <div class="fields-row">
-            <div class="field">
-              <label>Warehouse ID</label>
-              <input
-                type="text"
-                id="warehouseId"
-                placeholder="e.g. 3"
-                style="width: 100px"
-              />
+            <div class="field" id="warehouseField">
+              <!-- populated by setupWarehouseField() on load -->
             </div>
             <div class="field" id="clientField">
               <label>Client</label>
@@ -673,6 +667,32 @@
       let session = null;
       let activeReport = null;
 
+      // ── Warehouse field setup ─────────────────────────────────────────────────
+      function setupWarehouseField(warehouses) {
+        const field = document.getElementById("warehouseField");
+
+        if (warehouses.length === 1) {
+          // Single warehouse — auto-select silently via hidden input
+          field.innerHTML = `<input type="hidden" id="warehouseId" value="${warehouses[0].ID}" />`;
+        } else if (warehouses.length > 1) {
+          // Multiple warehouses — show a dropdown
+          const opts = warehouses
+            .map((w) => `<option value="${w.ID}">${w.Name}</option>`)
+            .join("");
+          field.innerHTML = `
+            <label>Warehouse</label>
+            <select id="warehouseId" style="width:200px">
+              <option value="">— Select warehouse —</option>
+              ${opts}
+            </select>`;
+        } else {
+          // Warehouse list unavailable — fall back to manual text input
+          field.innerHTML = `
+            <label>Warehouse ID</label>
+            <input type="text" id="warehouseId" placeholder="e.g. 3" style="width:100px" />`;
+        }
+      }
+
       // ── Init ─────────────────────────────────────────────────────────────────
       window.onload = async () => {
         try {
@@ -684,8 +704,10 @@
           }
           session = data;
 
-          document.getElementById("usernameDisplay").textContent =
-            data.username;
+          document.getElementById("usernameDisplay").textContent = data.username;
+
+          // Set up warehouse selector
+          setupWarehouseField(data.warehouses || []);
 
           // Populate client dropdown for warehouse users
           if (data.isWarehouse && data.clients?.length > 0) {
@@ -783,8 +805,10 @@
 
       window.validateConfig = () => {
         const { warehouseId, clientId, session: s } = window.getConfig();
-        if (!warehouseId) {
-          setStatus("Please enter a Warehouse ID.", "error");
+        const warehouseEl = document.getElementById("warehouseId");
+        const isAutoSelected = warehouseEl?.type === "hidden";
+        if (!warehouseId && !isAutoSelected) {
+          setStatus("Please select a warehouse.", "error");
           return false;
         }
         if (s?.isWarehouse && !clientId) {

@@ -2,7 +2,7 @@
 // Identifies SKUs where current stock significantly exceeds the recommended
 // coverage level. Shows where capital is unnecessarily tied up in inventory.
 
-const { fetchStock, fetchOrders, buildSkuSales, startSSE, parseReportParams } = require('./base');
+const { fetchStock, fetchOrders, fetchProductNames, buildSkuSales, startSSE, parseReportParams } = require('./base');
 
 const meta = {
   title:       'Overstock Report',
@@ -36,8 +36,11 @@ async function run(req, res, url, session) {
       })
     );
 
+    send({ type: 'progress', message: 'Fetching product names…' });
+    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+
     send({ type: 'progress', message: 'Calculating overstock…' });
-    const rows = calculate(stock, orders, { days, coverageDays, overstockPct });
+    const rows = calculate(stock, orders, skuNameMap, { days, coverageDays, overstockPct });
 
     const totalExcess = rows.reduce((s, r) => s + r.excessUnits, 0);
     send({ type: 'done', rows, meta: { total: rows.length, totalExcess } });
@@ -47,14 +50,14 @@ async function run(req, res, url, session) {
   res.end();
 }
 
-function calculate(stock, orders, { days, coverageDays, overstockPct }) {
+function calculate(stock, orders, skuNameMap, { days, coverageDays, overstockPct }) {
   const skuSales = buildSkuSales(orders);
 
   return stock
     .map(item => {
       const sku          = item.SKU || item.Sku || '';
       const stockQty     = item.Level || 0;
-      const name         = item.Name || item.ProductName || '';
+      const name         = skuNameMap[sku] || item.Name || '';
       const totalSold    = skuSales[sku] || 0;
       const dailyVel     = totalSold / days;
 

@@ -2,7 +2,7 @@
 // Ranks SKUs by units sold and order frequency over a configurable period.
 // Helps clients identify their top performers and worst performers.
 
-const { fetchOrders, buildSkuSales, startSSE, parseReportParams } = require('./base');
+const { fetchOrders, fetchProductNames, buildSkuSales, startSSE, parseReportParams } = require('./base');
 
 const meta = {
   title:       'Best & Worst Sellers',
@@ -30,8 +30,11 @@ async function run(req, res, url, session) {
       })
     );
 
+    send({ type: 'progress', message: 'Fetching product names…' });
+    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+
     send({ type: 'progress', message: 'Ranking SKUs…' });
-    const { topSellers, worstSellers, all } = calculate(orders, { limit });
+    const { topSellers, worstSellers, all } = calculate(orders, skuNameMap, { limit });
 
     send({ type: 'done', topSellers, worstSellers, all,
       meta: { totalOrders: orders.length, totalSkus: all.length }
@@ -42,8 +45,7 @@ async function run(req, res, url, session) {
   res.end();
 }
 
-function calculate(orders, { limit }) {
-  // Build richer per-SKU stats: units sold, order count, unique order dates
+function calculate(orders, skuNameMap, { limit }) {
   const skuStats = {};
 
   for (const order of orders) {
@@ -51,7 +53,7 @@ function calculate(orders, { limit }) {
     for (const item of (order.OrderItems || [])) {
       const sku  = item.SKU || item.Sku || '';
       const qty  = item.Quantity || 0;
-      const name = item.ProductDescription || item.Name || '';
+      const name = skuNameMap[sku] || '';
       if (!sku || !qty) continue;
 
       if (!skuStats[sku]) skuStats[sku] = { sku, name, totalSold: 0, orderCount: 0, dates: new Set() };

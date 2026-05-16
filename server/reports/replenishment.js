@@ -2,7 +2,7 @@
 // How much of each SKU does the client need to order?
 // Formula: ((coverageDays + leadTime) × dailyVelocity) - currentStock
 
-const { fetchStock, fetchOrders, buildSkuSales, startSSE, parseReportParams } = require('./base');
+const { fetchStock, fetchOrders, fetchProductNames, buildSkuSales, startSSE, parseReportParams } = require('./base');
 
 const meta = {
   title:       'Replenishment Planner',
@@ -36,8 +36,11 @@ async function run(req, res, url, session) {
       })
     );
 
+    send({ type: 'progress', message: 'Fetching product names…' });
+    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+
     send({ type: 'progress', message: 'Calculating replenishment…' });
-    const rows = calculate(stock, orders, { days, coverageDays, leadTime });
+    const rows = calculate(stock, orders, skuNameMap, { days, coverageDays, leadTime });
 
     send({ type: 'done', rows, meta: { total: rows.length, needsOrder: rows.filter(r => r.orderQty > 0).length } });
   } catch (err) {
@@ -46,14 +49,14 @@ async function run(req, res, url, session) {
   res.end();
 }
 
-function calculate(stock, orders, { days, coverageDays, leadTime }) {
+function calculate(stock, orders, skuNameMap, { days, coverageDays, leadTime }) {
   const skuSales = buildSkuSales(orders);
 
   return stock
     .map(item => {
       const sku       = item.SKU || item.Sku || '';
       const stockQty  = item.Level || 0;
-      const name      = item.Name || item.ProductName || '';
+      const name      = skuNameMap[sku] || item.Name || '';
       const totalSold = skuSales[sku] || 0;
       const dailyVel  = totalSold / days;
       const daysLeft  = dailyVel > 0 ? Math.round(stockQty / dailyVel) : null;

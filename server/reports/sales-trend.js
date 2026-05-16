@@ -2,7 +2,7 @@
 // Compares sales velocity in two periods (e.g. last 30 days vs prior 30 days)
 // to identify SKUs that are growing fast, declining, or newly active.
 
-const { fetchOrders, startSSE, parseReportParams } = require('./base');
+const { fetchOrders, fetchProductNames, startSSE, parseReportParams } = require('./base');
 
 const meta = {
   title:       'Sales Trend Report',
@@ -39,8 +39,11 @@ async function run(req, res, url, session) {
       (p) => send({ type: 'progress', ...p, message: p.stage === 'items' ? `Prior orders: items ${p.done}/${p.total}` : `Prior orders: page ${p.page}` })
     );
 
+    send({ type: 'progress', message: 'Fetching product names…' });
+    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+
     send({ type: 'progress', message: 'Calculating trends…' });
-    const rows = calculate(recentOrders, priorOrders, days);
+    const rows = calculate(recentOrders, priorOrders, skuNameMap, days);
 
     send({ type: 'done', rows, meta: {
       recentPeriod: `${fmt(recentFrom)} → ${fmt(now)}`,
@@ -56,18 +59,17 @@ async function run(req, res, url, session) {
   res.end();
 }
 
-function calculate(recentOrders, priorOrders, days) {
+function calculate(recentOrders, priorOrders, skuNameMap, days) {
   const recentSales = buildSales(recentOrders);
   const priorSales  = buildSales(priorOrders);
 
-  // Union of all SKUs from both periods
   const allSkus = new Set([...Object.keys(recentSales), ...Object.keys(priorSales)]);
 
   return Array.from(allSkus)
     .map(sku => {
-      const recent = recentSales[sku] || { units: 0, name: '' };
-      const prior  = priorSales[sku]  || { units: 0, name: '' };
-      const name   = recent.name || prior.name || '';
+      const recent = recentSales[sku] || { units: 0 };
+      const prior  = priorSales[sku]  || { units: 0 };
+      const name   = skuNameMap[sku] || '';
 
       const recentVel = recent.units / days;
       const priorVel  = prior.units  / days;
@@ -107,11 +109,10 @@ function buildSales(orders) {
   const sales = {};
   for (const order of orders) {
     for (const item of (order.OrderItems || [])) {
-      const sku  = item.SKU || item.Sku || '';
-      const qty  = item.Quantity || 0;
-      const name = item.ProductDescription || item.Name || '';
+      const sku = item.SKU || item.Sku || '';
+      const qty = item.Quantity || 0;
       if (!sku || !qty) continue;
-      if (!sales[sku]) sales[sku] = { units: 0, name };
+      if (!sales[sku]) sales[sku] = { units: 0 };
       sales[sku].units += qty;
     }
   }

@@ -124,9 +124,71 @@ function parseReportParams(url, session) {
   };
 }
 
+// Fetch product name map { sku → name } from the product catalogue.
+// clientId=null fetches across all clients (warehouse context).
+async function fetchProductNames(apiKey, warehouseId, clientId) {
+  const names = {};
+  let pageNo = 1;
+  const clientParam = clientId ? `&ClientId=${encodeURIComponent(clientId)}` : '';
+
+  while (true) {
+    const path = `/api/Product/List?WarehouseId=${encodeURIComponent(warehouseId)}&PageNo=${pageNo}&Limit=${PAGE_LIMIT}${clientParam}`;
+    const result = await mintsoftGet(path, apiKey);
+    if (result.status !== 200) break;
+
+    const batch = Array.isArray(result.body) ? result.body : [];
+    if (!batch.length) break;
+
+    for (const p of batch) {
+      const sku  = p.SKU || p.Sku || '';
+      const name = p.Name || p.Description || '';
+      if (sku && name) names[sku] = name;
+    }
+
+    if (batch.length < PAGE_LIMIT) break;
+    pageNo++;
+    if (pageNo > 200) break;
+  }
+
+  return names;
+}
+
+// Fetch unconfirmed invoice summary for a single client (current period accruals)
+async function fetchUnconfirmedInvoiceSummary(apiKey, clientId, fromDate, toDate) {
+  const path = `/api/Account/Invoice/GetUnconfirmedInvoiceSummary?clientID=${encodeURIComponent(clientId)}&fromDate=${fromDate}&toDate=${toDate}`;
+  try {
+    const result = await mintsoftGet(path, apiKey);
+    return result.status === 200 ? result.body : null;
+  } catch {
+    return null;
+  }
+}
+
+// Fetch order headers only (no per-order item detail) — faster, used for dashboard counts
+async function fetchOrderHeaders(apiKey, warehouseId, clientId, fromDate, toDate) {
+  const allOrders = [];
+  let pageNo = 1;
+  const clientParam = clientId ? `&ClientId=${encodeURIComponent(clientId)}` : '';
+
+  while (true) {
+    const path = `/api/Order/List?WarehouseId=${encodeURIComponent(warehouseId)}&SinceDespatchDate=${fromDate}T00:00:00&ToDate=${toDate}T23:59:59&Limit=${PAGE_LIMIT}&PageNo=${pageNo}${clientParam}`;
+    const result = await mintsoftGet(path, apiKey);
+    if (result.status !== 200) throw new Error(`Orders API error: ${result.status} on page ${pageNo}`);
+
+    const batch = Array.isArray(result.body) ? result.body : [];
+    allOrders.push(...batch);
+    if (batch.length < PAGE_LIMIT) break;
+    pageNo++;
+    if (pageNo > 200) break;
+  }
+
+  return allOrders;
+}
+
 module.exports = {
   fmt, daysAgo,
-  fetchStock, fetchOrders,
+  fetchStock, fetchOrders, fetchOrderHeaders,
+  fetchProductNames, fetchUnconfirmedInvoiceSummary,
   buildSkuSales, buildSkuDailySales,
   startSSE, parseReportParams
 };

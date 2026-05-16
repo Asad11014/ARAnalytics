@@ -2,7 +2,7 @@
 // Identifies SKUs with zero or near-zero sales velocity over a configurable period.
 // These SKUs are occupying paid warehouse space without generating revenue.
 
-const { fetchStock, fetchOrders, buildSkuSales, startSSE, parseReportParams } = require('./base');
+const { fetchStock, fetchOrders, fetchProductNames, buildSkuSales, startSSE, parseReportParams } = require('./base');
 
 const meta = {
   title:       'Dead Stock Report',
@@ -33,8 +33,11 @@ async function run(req, res, url, session) {
       })
     );
 
+    send({ type: 'progress', message: 'Fetching product names…' });
+    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+
     send({ type: 'progress', message: 'Identifying dead stock…' });
-    const rows = calculate(stock, orders, { threshold });
+    const rows = calculate(stock, orders, skuNameMap, { threshold });
 
     const totalUnits = rows.reduce((s, r) => s + r.stock, 0);
     send({ type: 'done', rows, meta: { total: rows.length, totalUnits } });
@@ -44,7 +47,7 @@ async function run(req, res, url, session) {
   res.end();
 }
 
-function calculate(stock, orders, { threshold }) {
+function calculate(stock, orders, skuNameMap, { threshold }) {
   const skuSales = buildSkuSales(orders);
 
   return stock
@@ -58,7 +61,7 @@ function calculate(stock, orders, { threshold }) {
     .map(item => {
       const sku      = item.SKU || item.Sku || '';
       const stockQty = item.Level || 0;
-      const name     = item.Name || item.ProductName || '';
+      const name     = skuNameMap[sku] || item.Name || '';
       const sold     = skuSales[sku] || 0;
 
       return {

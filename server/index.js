@@ -1,12 +1,15 @@
 // ─── server/index.js ─────────────────────────────────────────────────────────
 // Entry point. Responsible for routing only — no business logic lives here.
 
-const http    = require('http');
-const path    = require('path');
-const fs      = require('fs');
-const auth    = require('./auth');
-const proxy   = require('./proxy');
-const reports = require('./reports/index');
+const http      = require('http');
+const path      = require('path');
+const fs        = require('fs');
+const auth      = require('./auth');
+const proxy     = require('./proxy');
+const reports   = require('./reports/index');
+const dashboard = require('./reports/dashboard');
+
+const DIST_DIR = path.join(__dirname, '../client/dist');
 
 const PORT = process.env.PORT || 3001;
 
@@ -34,26 +37,17 @@ const server = http.createServer(async (req, res) => {
   try {
     const { pathname } = url;
 
-    // ── Static files ─────────────────────────────────────────────────────────
-    if (pathname === '/' || pathname === '/login') {
-      return serveFile(res, path.join(__dirname, '../client/login.html'), 'text/html');
-    }
-    if (pathname === '/app') {
-      const session = auth.getSession(req);
-      if (!session) { res.writeHead(302, { Location: '/' }); res.end(); return; }
-      return serveFile(res, path.join(__dirname, '../client/app/index.html'), 'text/html');
-    }
-    // Serve client-side report JS files
-    if (pathname.startsWith('/reports/') && pathname.endsWith('.js')) {
-      const file = path.join(__dirname, '../client', pathname);
-      console.log(`Serving JS: ${pathname} → ${file}`);
-      return serveFile(res, file, 'application/javascript');
-    }
-
     // ── Auth routes ───────────────────────────────────────────────────────────
     if (pathname === '/api/login'  && req.method === 'POST') return auth.login(req, res);
     if (pathname === '/api/logout' && req.method === 'POST') return auth.logout(req, res);
     if (pathname === '/api/me'     && req.method === 'GET')  return auth.me(req, res);
+
+    // ── Dashboard route ───────────────────────────────────────────────────────
+    if (pathname === '/api/dashboard' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      return dashboard.run(req, res, url, session);
+    }
 
     // ── Report list ───────────────────────────────────────────────────────────
     if (pathname === '/api/reports' && req.method === 'GET') {
@@ -71,6 +65,25 @@ const server = http.createServer(async (req, res) => {
 
     // ── Pass-through proxy ────────────────────────────────────────────────────
     if (pathname.startsWith('/proxy/')) return proxy.passThrough(req, res, url);
+
+    // ── SPA static serving (production build) ─────────────────────────────────
+    if (req.method === 'GET') {
+      // Try to serve an exact static asset from dist first
+      const assetPath = path.join(DIST_DIR, pathname);
+      if (fs.existsSync(assetPath) && fs.statSync(assetPath).isFile()) {
+        const ext = path.extname(pathname);
+        const mime = {
+          '.js': 'application/javascript', '.css': 'text/css',
+          '.html': 'text/html', '.svg': 'image/svg+xml',
+          '.ico': 'image/x-icon', '.png': 'image/png',
+          '.woff2': 'font/woff2', '.woff': 'font/woff',
+        }[ext] || 'application/octet-stream';
+        return serveFile(res, assetPath, mime);
+      }
+      // SPA fallback — serve index.html for all unmatched GET routes
+      const indexPath = path.join(DIST_DIR, 'index.html');
+      if (fs.existsSync(indexPath)) return serveFile(res, indexPath, 'text/html');
+    }
 
     res.json(404, { error: 'Not found' });
 
