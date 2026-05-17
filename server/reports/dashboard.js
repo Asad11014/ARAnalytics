@@ -99,17 +99,23 @@ async function run(req, res, url, session) {
       send({ type: 'progress', message: 'Fetching stock levels…' });
       const stock = await fetchStock(apiKey, warehouseId, clientId);
 
+      // If clientId was not set at login, infer it from the first stock item
+      // (Mintsoft auto-scopes stock API responses to the caller's client)
+      const effectiveClientId = clientId
+        || (stock.length > 0 ? String(stock[0].ClientId || stock[0].clientId || '') : null)
+        || null;
+
       send({ type: 'progress', message: 'Fetching orders (last 30 days)…' });
       const orders30 = await fetchOrders(
-        apiKey, warehouseId, clientId, from30, toDate,
+        apiKey, warehouseId, effectiveClientId, from30, toDate,
         (p) => send({ type: 'progress', message: p.stage === 'items' ? `Loading order items… ${p.done}/${p.total}` : `Fetching orders… page ${p.page}` })
       );
 
       send({ type: 'progress', message: 'Fetching previous period…' });
-      const ordersPrev = await fetchOrderHeaders(apiKey, warehouseId, clientId, from60, to30ago);
+      const ordersPrev = await fetchOrderHeaders(apiKey, warehouseId, effectiveClientId, from60, to30ago);
 
       send({ type: 'progress', message: 'Fetching product catalogue…' });
-      const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+      const skuNameMap = await fetchProductNames(apiKey, warehouseId, effectiveClientId);
 
       data = computeClientDashboard(stock, orders30, ordersPrev, skuNameMap);
     }

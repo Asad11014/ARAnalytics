@@ -5,6 +5,7 @@
 
 const https   = require('https');
 const crypto  = require('crypto');
+const { mintsoftGet } = require('./mintsoft');
 
 const MINTSOFT_BASE = 'https://api.mintsoft.co.uk';
 
@@ -143,17 +144,37 @@ function fetchClientProfile(apiKey) {
       method: 'GET',
       headers: { 'ms-apikey': apiKey, 'User-Agent': 'MexecoReplenishmentTool/1.0' }
     };
+    console.log('  fetchClientProfile: GET /api/ClientUser/Current');
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
+        console.log(`  fetchClientProfile: status=${res.statusCode}`);
+        if (res.statusCode !== 200) { resolve(null); return; }
         try { resolve(JSON.parse(data)); }
         catch(e) { resolve(null); }
       });
     });
-    req.on('error', () => resolve(null));
+    req.on('error', (e) => { console.log(`  fetchClientProfile error: ${e.message}`); resolve(null); });
     req.end();
   });
+}
+
+// Fallback: infer ClientId from stock levels — Mintsoft auto-scopes to the calling user's client
+async function inferClientIdFromStock(apiKey, warehouseId) {
+  try {
+    const result = await mintsoftGet(
+      `/api/Product/StockLevels?WarehouseId=${encodeURIComponent(warehouseId)}&Limit=1`,
+      apiKey
+    );
+    console.log(`  inferClientIdFromStock: status=${result.status} items=${Array.isArray(result.body) ? result.body.length : 'n/a'}`);
+    if (result.status === 200 && Array.isArray(result.body) && result.body.length > 0) {
+      return result.body[0].ClientId || result.body[0].clientId || null;
+    }
+  } catch (e) {
+    console.log(`  inferClientIdFromStock failed: ${e.message}`);
+  }
+  return null;
 }
 
 // ── Session helpers ───────────────────────────────────────────────────────────
@@ -245,12 +266,28 @@ async function login(req, res) {
       // Warehouse users can select any client — clientId set per-report, not at login
       console.log(`  Clients available: ${clients.length}`);
     } else {
-      // Client users — auto-detect their own ClientId
+      // Client users — detect their ClientId from profile endpoint
       const profile = await fetchClientProfile(apiKey);
-      if (profile) {
-        clientId = profile.ClientId || profile.clientId || profile.ID || profile.id || null;
-        console.log(`  ClientId detected: ${clientId}`);
+      if (profile && typeof profile === 'object') {
+        // Try all known Mintsoft field name variations
+        clientId = profile.ClientId
+          || profile.clientId
+          || profile.ClientID
+          || profile.client_id
+          || profile.Client?.ID
+          || profile.Client?.Id
+          || null;
+        console.log(`  Profile keys: ${Object.keys(profile).join(', ')}`);
+        console.log(`  ClientId from profile: ${clientId}`);
       }
+
+      // Fallback: extract ClientId from stock levels (Mintsoft auto-scopes to caller's client)
+      if (!clientId && warehouses.length > 0) {
+        clientId = await inferClientIdFromStock(apiKey, warehouses[0].ID);
+        if (clientId) console.log(`  ClientId inferred from stock: ${clientId}`);
+      }
+
+      if (!clientId) console.log(`  WARNING: could not determine ClientId for client user`);
     }
 
     // Create session

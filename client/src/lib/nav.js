@@ -19,6 +19,7 @@ export const NAV_SECTIONS = [
     id: 'operations',
     label: 'Operations',
     icon: '🏭',
+    warehouseOnly: true,
     items: [
       { to: '/app/operations/fulfillment', label: 'Fulfillment',        icon: '📤', badge: 'new'  },
       { to: '/app/operations/receiving',   label: 'Receiving',          icon: '📥', badge: 'soon' },
@@ -30,7 +31,7 @@ export const NAV_SECTIONS = [
     label: 'Financial',
     icon: '💰',
     items: [
-      { to: '/app/financial/profitability', label: 'Profitability',     icon: '💹', badge: 'new'  },
+      { to: '/app/financial/profitability', label: 'Revenue Breakdown', clientLabel: 'Cost Breakdown', icon: '💹', badge: 'new'  },
       { to: '/app/financial/billing',       label: 'Billing Summary',   icon: '🧾', badge: 'soon' },
     ]
   },

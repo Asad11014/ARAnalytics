@@ -136,7 +136,7 @@ export default function Sidebar() {
         <div className="h-px bg-brand-border mx-4 my-1.5" />
 
         {/* Collapsible sections */}
-        {NAV_SECTIONS.map(section => {
+        {NAV_SECTIONS.filter(s => !s.warehouseOnly || session?.isWarehouse).map(section => {
           const isOpen = openSections.includes(section.id)
           return (
             <div key={section.id}>
@@ -161,7 +161,7 @@ export default function Sidebar() {
                     )}
                   >
                     <span className="text-sm flex-shrink-0">{item.icon}</span>
-                    <span className="flex-1 truncate">{item.label}</span>
+                    <span className="flex-1 truncate">{(!session?.isWarehouse && item.clientLabel) ? item.clientLabel : item.label}</span>
                     {item.badge && (
                       <span className={clsx('font-mono text-[8px] px-1 py-0.5 rounded uppercase tracking-wide', BADGE[item.badge])}>
                         {item.badge}

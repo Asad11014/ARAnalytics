@@ -27,6 +27,12 @@ import BestSellers from './analytics/BestSellers'
 import SalesTrend  from './analytics/SalesTrend'
 import Forecasting from './analytics/Forecasting'
 
+function WarehouseOnly({ children }) {
+  const { session } = useSession()
+  if (session && !session.isWarehouse) return <Navigate to="/app" replace />
+  return children
+}
+
 function AppShellLayout() {
   const { session, loading } = useSession()
   const { sidebarOpen, openSidebar, closeSidebar } = useUI()
@@ -83,10 +89,10 @@ function AppShellLayout() {
           <Route path="inventory/stockout"      element={<StockoutAnalysis />} />
           <Route path="inventory/turnover"      element={<Turnover />} />
 
-          {/* Operations */}
-          <Route path="operations/fulfillment"  element={<Fulfillment />} />
-          <Route path="operations/receiving"    element={<Receiving />} />
-          <Route path="operations/errors"       element={<Errors />} />
+          {/* Operations — warehouse users only */}
+          <Route path="operations/fulfillment"  element={<WarehouseOnly><Fulfillment /></WarehouseOnly>} />
+          <Route path="operations/receiving"    element={<WarehouseOnly><Receiving /></WarehouseOnly>} />
+          <Route path="operations/errors"       element={<WarehouseOnly><Errors /></WarehouseOnly>} />
 
           {/* Financial */}
           <Route path="financial/profitability" element={<Profitability />} />
