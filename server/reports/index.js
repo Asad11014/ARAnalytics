@@ -1,44 +1,50 @@
-// ─── server/reports/index.js ──────────────────────────────────────────────────
-// Central registry for all reports.
-// To add a new report: create its file, import it here, add one line to REPORTS.
-// The route /api/report/:name will automatically pick it up.
-
-const replenishment = require('./replenishment');
-const deadStock     = require('./dead-stock');
-const overstock     = require('./overstock');
-const bestSellers   = require('./best-sellers');
-const salesTrend    = require('./sales-trend');
+// ─── server/reports/index.js ───────────────────────────────────────────────────
+// Central report registry. To add a report: create its file, require it here,
+// add one entry to REPORTS. Route /api/report/:name picks it up automatically.
 
 const REPORTS = {
-  'replenishment': replenishment,
-  'dead-stock':    deadStock,
-  'overstock':     overstock,
-  'best-sellers':  bestSellers,
-  'sales-trend':   salesTrend,
+  // ── Inventory ──────────────────────────────────────────────────────────────
+  'inventory-health-score': require('./inventory/health-score'),
+  'inventory-snapshot':     require('./inventory/snapshot'),
+  'inventory-aging':        require('./inventory/aging'),
+  'sku-velocity':           require('./inventory/velocity'),
+  'stockout-analysis':      require('./inventory/stockout-analysis'),
+  'inventory-turnover':     require('./inventory/turnover'),
+  // ── Operations ────────────────────────────────────────────────────────────
+  'fulfillment':            require('./operations/fulfillment'),
+  'receiving':              require('./operations/receiving'),
+  'errors':                 require('./operations/errors'),
+
+  // ── Financial ─────────────────────────────────────────────────────────────
+  'profitability':          require('./financial/profitability'),
+  'billing':                require('./financial/billing'),
+
+  // ── Analytics ─────────────────────────────────────────────────────────────
+  'best-sellers':           require('./analytics/best-sellers'),
+  'sales-trend':            require('./analytics/sales-trend'),
+  'forecasting':            require('./analytics/forecasting'),
 };
 
-// Route handler — called by server/index.js for GET /api/report/:name
 async function handleReport(req, res, url, session) {
   const name = url.pathname.split('/').pop();
   const handler = REPORTS[name];
-
   if (!handler) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: `Unknown report: ${name}` }));
     return;
   }
-
   await handler.run(req, res, url, session);
 }
 
-// Returns the list of available reports (for the UI nav)
 function listReports() {
   return Object.entries(REPORTS).map(([id, r]) => ({
     id,
     title:       r.meta.title,
     description: r.meta.description,
     icon:        r.meta.icon,
-    params:      r.meta.params,
+    category:    r.meta.category || 'other',
+    comingSoon:  r.meta.comingSoon || false,
+    params:      r.meta.params || [],
   }));
 }
 

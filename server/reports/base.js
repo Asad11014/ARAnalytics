@@ -165,7 +165,7 @@ async function fetchUnconfirmedInvoiceSummary(apiKey, clientId, fromDate, toDate
 }
 
 // Fetch order headers only (no per-order item detail) — faster, used for dashboard counts
-async function fetchOrderHeaders(apiKey, warehouseId, clientId, fromDate, toDate) {
+async function fetchOrderHeaders(apiKey, warehouseId, clientId, fromDate, toDate, onProgress) {
   const allOrders = [];
   let pageNo = 1;
   const clientParam = clientId ? `&ClientId=${encodeURIComponent(clientId)}` : '';
@@ -177,6 +177,7 @@ async function fetchOrderHeaders(apiKey, warehouseId, clientId, fromDate, toDate
 
     const batch = Array.isArray(result.body) ? result.body : [];
     allOrders.push(...batch);
+    if (onProgress) onProgress({ page: pageNo, total: allOrders.length });
     if (batch.length < PAGE_LIMIT) break;
     pageNo++;
     if (pageNo > 200) break;
