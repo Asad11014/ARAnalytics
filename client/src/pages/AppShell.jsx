@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useSession } from '../context/SessionContext'
+import { UIProvider, useUI } from '../context/UIContext'
 import Sidebar       from '../components/Sidebar'
 import Dashboard     from './Dashboard'
 import Replenishment from './reports/Replenishment'
@@ -9,8 +10,9 @@ import Overstock     from './reports/Overstock'
 import BestSellers   from './reports/BestSellers'
 import SalesTrend    from './reports/SalesTrend'
 
-export default function AppShell() {
+function AppShellLayout() {
   const { session, loading } = useSession()
+  const { sidebarOpen, openSidebar, closeSidebar } = useUI()
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -32,8 +34,35 @@ export default function AppShell() {
 
   return (
     <div className="flex min-h-screen bg-brand-bg">
+
+      {/* Mobile top bar — hamburger + app name */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 h-12 bg-brand-surface border-b border-brand-border flex items-center px-4 z-30 gap-3">
+        <button
+          onClick={openSidebar}
+          aria-label="Open menu"
+          className="w-8 h-8 flex items-center justify-center text-ink-muted hover:text-ink hover:bg-brand-surface2 rounded transition-colors"
+        >
+          <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
+            <rect y="0"  width="18" height="2" rx="1" fill="currentColor"/>
+            <rect y="6"  width="18" height="2" rx="1" fill="currentColor"/>
+            <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
+          </svg>
+        </button>
+        <span className="font-extrabold text-sm text-ink">PF Analytics</span>
+      </div>
+
+      {/* Backdrop — tapping closes sidebar on mobile */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+          onClick={closeSidebar}
+        />
+      )}
+
       <Sidebar />
-      <main className="ml-60 flex-1 min-h-screen flex flex-col">
+
+      {/* pt-12 on mobile creates space below the fixed top bar; min-w-0 prevents flex child from expanding past viewport width */}
+      <main className="lg:ml-60 flex-1 min-h-screen flex flex-col pt-12 lg:pt-0 min-w-0 overflow-x-hidden">
         <Routes>
           <Route index element={<Dashboard />} />
           <Route path="reports/replenishment" element={<Replenishment />} />
@@ -45,5 +74,13 @@ export default function AppShell() {
         </Routes>
       </main>
     </div>
+  )
+}
+
+export default function AppShell() {
+  return (
+    <UIProvider>
+      <AppShellLayout />
+    </UIProvider>
   )
 }

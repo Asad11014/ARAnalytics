@@ -48,7 +48,7 @@ export default function SortableTable({ columns, rows, emptyMessage = 'No data f
                 key={col.key}
                 onClick={() => handleSort(col.key)}
                 className={clsx(
-                  'px-4 py-2.5 text-left bg-brand-surface2 border-b border-brand-border',
+                  'px-2 py-2 sm:px-4 sm:py-2.5 text-left bg-brand-surface2 border-b border-brand-border',
                   'font-mono text-[10px] text-ink-muted tracking-widest uppercase',
                   'cursor-pointer select-none whitespace-nowrap hover:text-primary transition-colors',
                   sortKey === col.key && 'text-primary',
@@ -74,7 +74,7 @@ export default function SortableTable({ columns, rows, emptyMessage = 'No data f
                 <td
                   key={col.key}
                   className={clsx(
-                    'px-4 py-3 font-mono text-[12px] text-ink align-middle',
+                    'px-2 py-2 sm:px-4 sm:py-3 font-mono text-[12px] text-ink align-middle',
                     col.align === 'right' && 'text-right'
                   )}
                 >

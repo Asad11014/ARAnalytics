@@ -73,7 +73,7 @@ function Panel({ id, title, badge, viewMode, onToggleView, onDragStart, onDragEn
 
       {/* Content — flex-col when showing a table so fillHeight SortableTable can grow into the space;
            overflow-auto when showing a chart so the chart SVG can scroll if it exceeds panel height */}
-      <div className={`flex-1 px-5 pb-2 min-h-0 ${isTable ? 'flex flex-col overflow-hidden' : 'overflow-auto'}`}>
+      <div className={`flex-1 px-3 sm:px-5 pb-2 min-h-0 ${isTable ? 'flex flex-col overflow-hidden' : 'overflow-auto'}`}>
         {children}
       </div>
 
@@ -422,10 +422,10 @@ export default function WarehouseDashboard() {
   return (
     <div className="flex-1 overflow-y-auto">
       {/* Topbar */}
-      <header className="bg-brand-surface border-b border-brand-border px-7 h-[52px] flex items-center justify-between sticky top-0 z-40">
+      <header className="bg-brand-surface border-b border-brand-border px-4 sm:px-7 min-h-[52px] flex items-center justify-between sticky top-0 z-40 gap-2">
         <div>
           <div className="font-sans font-bold text-[15px] text-ink">Warehouse Dashboard</div>
-          <div className="font-mono text-[11px] text-ink-muted">
+          <div className="font-mono text-[11px] text-ink-muted hidden sm:block">
             {cachedAt
               ? <span>Data from <span className="text-primary">{timeAgo(cachedAt)}</span> · Drag panels to reorder · drag edge to resize</span>
               : 'Drag panels to reorder · drag bottom edge to resize · toggle chart/table view'
@@ -433,12 +433,12 @@ export default function WarehouseDashboard() {
           </div>
         </div>
         <button onClick={() => load(true)} disabled={loading}
-          className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-sans font-bold text-xs rounded px-4 py-2 transition-colors disabled:opacity-50">
+          className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-sans font-bold text-xs rounded px-3 sm:px-4 py-2 transition-colors disabled:opacity-50 flex-shrink-0">
           {loading ? '⟳ Refreshing…' : '⟳ Refresh'}
         </button>
       </header>
 
-      <div className="p-7 space-y-5">
+      <div className="p-4 sm:p-7 space-y-5">
         <StatusBar message={status.msg} type={status.type} />
 
         {/* KPI cards */}

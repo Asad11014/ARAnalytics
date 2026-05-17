@@ -71,10 +71,10 @@ export default function SalesTrend() {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <header className="bg-brand-surface border-b border-brand-border px-7 h-[52px] flex items-center justify-between sticky top-0 z-40">
+      <header className="bg-brand-surface border-b border-brand-border px-4 sm:px-7 min-h-[52px] flex items-center justify-between sticky top-0 z-40 gap-2">
         <div>
           <div className="font-sans font-bold text-[15px] text-ink">Sales Trend Report</div>
-          <div className="font-mono text-[11px] text-ink-muted">Compare recent vs prior period to spot momentum shifts</div>
+          <div className="font-mono text-[11px] text-ink-muted hidden sm:block">Compare recent vs prior period to spot momentum shifts</div>
         </div>
         {result && (
           <button onClick={() => exportCSV('sales-trend.csv', columns, result.rows || [])}
@@ -84,8 +84,8 @@ export default function SalesTrend() {
         )}
       </header>
 
-      <div className="p-7 space-y-5">
-        <div className="bg-brand-surface border border-brand-border rounded-lg px-6 py-4">
+      <div className="p-4 sm:p-7 space-y-5">
+        <div className="bg-brand-surface border border-brand-border rounded-lg px-4 sm:px-6 py-3 sm:py-4">
           <div className="font-mono text-[9px] text-primary uppercase tracking-widest mb-3">▸ Parameters</div>
           <div className="flex gap-3 items-end flex-wrap">
             <div className="flex flex-col gap-1">
