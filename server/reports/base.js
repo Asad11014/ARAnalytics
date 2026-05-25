@@ -158,8 +158,10 @@ async function fetchUnconfirmedInvoiceSummary(apiKey, clientId, fromDate, toDate
   const path = `/api/Account/Invoice/GetUnconfirmedInvoiceSummary?clientID=${encodeURIComponent(clientId)}&fromDate=${fromDate}&toDate=${toDate}`;
   try {
     const result = await mintsoftGet(path, apiKey);
+    console.log(`  [accruals] client=${clientId} status=${result.status} body=${JSON.stringify(result.body || null).substring(0, 500)}`);
     return result.status === 200 ? result.body : null;
-  } catch {
+  } catch (e) {
+    console.log(`  [accruals] client=${clientId} error: ${e.message}`);
     return null;
   }
 }
@@ -177,6 +179,40 @@ async function fetchInvoiceList(apiKey, clientId) {
     console.log(`  fetchInvoiceList error: ${e.message}`);
     return [];
   }
+}
+
+// Fetch ASN (Advanced Shipping Notice) records from Mintsoft /api/ASN/List.
+async function fetchGoodsIn(apiKey, warehouseId, clientId, fromDate, toDate) {
+  const records     = [];
+  let   pageNo      = 1;
+  const clientParam = clientId ? `&ClientId=${encodeURIComponent(clientId)}` : '';
+  const fromParam   = fromDate ? `&SinceDate=${encodeURIComponent(fromDate + 'T00:00:00')}` : '';
+  const toParam     = toDate   ? `&ToDate=${encodeURIComponent(toDate   + 'T23:59:59')}`   : '';
+
+  while (true) {
+    const path   = `/api/ASN/List?WarehouseId=${encodeURIComponent(warehouseId)}&Limit=${PAGE_LIMIT}&PageNo=${pageNo}${clientParam}${fromParam}${toParam}`;
+    const result = await mintsoftGet(path, apiKey);
+
+    if (result.status !== 200) {
+      console.log(`[asn] /api/ASN/List status ${result.status} on page ${pageNo}`);
+      break;
+    }
+
+    const batch = Array.isArray(result.body)
+      ? result.body
+      : (result.body?.Data || result.body?.Items || result.body?.ASNs || []);
+
+    if (pageNo === 1) {
+      console.log(`[asn] page 1: ${batch.length} records`);
+    }
+
+    records.push(...batch);
+    if (batch.length < PAGE_LIMIT) break;
+    pageNo++;
+    if (pageNo > 100) break;
+  }
+
+  return records;
 }
 
 // Fetch a single confirmed invoice by ID
@@ -285,7 +321,7 @@ async function fetchOrderHeaders(apiKey, warehouseId, clientId, fromDate, toDate
 
 module.exports = {
   fmt, daysAgo,
-  fetchStock, fetchOrders, fetchOrderHeaders,
+  fetchStock, fetchOrders, fetchOrderHeaders, fetchGoodsIn,
   fetchProductNames, fetchUnconfirmedInvoiceSummary, fetchInvoiceList, fetchInvoiceById, fetchInvoiceSummary,
   buildSkuSales, buildSkuDailySales,
   startSSE, parseReportParams

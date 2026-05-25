@@ -1,7 +1,8 @@
 // Real-Time Inventory Snapshot
 // Current stock levels enriched with velocity, cover days, and health status.
 
-const { fetchStock, fetchOrders, fetchProductNames, startSSE, parseReportParams } = require('../base');
+const { resolveIds, getStock, getOrders, getSkuNames } = require('../db-base');
+const { startSSE, parseReportParams } = require('../base');
 
 const meta = {
   title:       'Inventory Snapshot',
@@ -14,20 +15,21 @@ const meta = {
 };
 
 async function run(req, res, url, session) {
-  const { apiKey } = session;
-  const { warehouseId, clientId, dateFrom, dateTo } = parseReportParams(url, session);
+  const { warehouseId: msWarehouseId, clientId: msClientId, dateFrom, dateTo } = parseReportParams(url, session);
   const send = startSSE(res);
 
   try {
-    send({ type: 'progress', message: 'Fetching live stock…' });
-    const stock = await fetchStock(apiKey, warehouseId, clientId);
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
 
-    const orders = await fetchOrders(apiKey, warehouseId, clientId, dateFrom, dateTo,
-      p => send({ type: 'progress', message: p.stage === 'items' ? `Loading orders… ${p.done}/${p.total}` : `Loading orders… page ${p.page}` })
-    );
+    send({ type: 'progress', message: 'Fetching live stock…' });
+    const stock = await getStock(accountId, warehouseId, clientId);
+
+    send({ type: 'progress', message: 'Fetching order history…' });
+    const orders = await getOrders(accountId, warehouseId, clientId, dateFrom, dateTo);
 
     send({ type: 'progress', message: 'Fetching product names…' });
-    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+    const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
 
     const days = parseInt(url.searchParams.get('days') || '30');
     send({ type: 'progress', message: 'Building snapshot…' });
@@ -52,11 +54,11 @@ function calculate(stock, orders, skuNameMap, days) {
   }
 
   const rows = stock.map(item => {
-    const sku      = item.SKU || item.Sku || '';
-    const stockQty = item.Level || 0;
-    const name     = skuNameMap[sku] || item.Name || '';
-    const sold     = velocity[sku] || 0;
-    const dailyVel = sold / days;
+    const sku         = item.SKU || item.Sku || '';
+    const stockQty    = item.Level || 0;
+    const name        = item.ProductName || skuNameMap[sku] || '';
+    const sold        = velocity[sku] || 0;
+    const dailyVel    = sold / days;
     const daysOfCover = dailyVel > 0 ? Math.round(stockQty / dailyVel) : null;
 
     let status;
@@ -73,12 +75,12 @@ function calculate(stock, orders, skuNameMap, days) {
   });
 
   const kpis = {
-    total:        rows.length,
-    outOfStock:   rows.filter(r => r.status === 'out-of-stock').length,
-    lowStock:     rows.filter(r => r.status === 'low-stock').length,
-    overstock:    rows.filter(r => r.status === 'overstock').length,
-    noMovement:   rows.filter(r => r.status === 'no-movement').length,
-    healthy:      rows.filter(r => r.status === 'healthy').length,
+    total:      rows.length,
+    outOfStock: rows.filter(r => r.status === 'out-of-stock').length,
+    lowStock:   rows.filter(r => r.status === 'low-stock').length,
+    overstock:  rows.filter(r => r.status === 'overstock').length,
+    noMovement: rows.filter(r => r.status === 'no-movement').length,
+    healthy:    rows.filter(r => r.status === 'healthy').length,
   };
 
   return { rows, kpis };

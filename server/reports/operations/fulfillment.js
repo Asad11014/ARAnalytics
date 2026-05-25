@@ -1,7 +1,8 @@
 // Order Fulfillment Performance
 // Measures how quickly orders are fulfilled and how consistently SLAs are met.
 
-const { fetchOrderHeaders, startSSE, parseReportParams } = require('../base');
+const { resolveIds, getOrderHeaders } = require('../db-base');
+const { startSSE, parseReportParams } = require('../base');
 
 const meta = {
   title:       'Fulfillment Performance',
@@ -15,13 +16,14 @@ const meta = {
 };
 
 async function run(req, res, url, session) {
-  const { apiKey } = session;
-  const { warehouseId, clientId, dateFrom, dateTo } = parseReportParams(url, session);
+  const { warehouseId: msWarehouseId, clientId: msClientId, dateFrom, dateTo } = parseReportParams(url, session);
   const slaDays = parseInt(url.searchParams.get('slaDays') || '2');
   const send = startSSE(res);
 
   try {
-    // Build client name map from session
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
+
     const clientMap = {};
     for (const c of (session.clients || [])) {
       const id   = String(c.ID || c.Id || c.id || '');
@@ -29,12 +31,11 @@ async function run(req, res, url, session) {
       if (id) clientMap[id] = name;
     }
 
-    const orders = await fetchOrderHeaders(apiKey, warehouseId, clientId, dateFrom, dateTo,
-      p => send({ type: 'progress', message: `Loading orders… page ${p.page} (${p.total} so far)` })
-    );
+    send({ type: 'progress', message: 'Fetching orders…' });
+    const orders = await getOrderHeaders(accountId, warehouseId, clientId, dateFrom, dateTo);
 
     send({ type: 'progress', message: 'Calculating fulfillment metrics…' });
-    const { rows, kpis } = calculate(orders, slaDays, clientMap, clientId);
+    const { rows, kpis } = calculate(orders, slaDays, clientMap, msClientId);
 
     send({ type: 'done', rows, meta: kpis });
   } catch (err) {
@@ -50,9 +51,8 @@ function calculate(orders, slaDays, clientMap, filterClientId) {
     const orderDate    = order.OrderDate    ? new Date(order.OrderDate)    : null;
     const despatchDate = order.DespatchDate ? new Date(order.DespatchDate) : null;
 
-    // Resolve client — use filterClientId if scoped to a single client, else look up from order
     const ordClientId = String(order.ClientId || order.ClientID || '');
-    const clientName = filterClientId
+    const clientName  = filterClientId
       ? (clientMap[String(filterClientId)] || 'My Account')
       : (clientMap[ordClientId] || ordClientId || 'Unknown');
     const key = (filterClientId ? String(filterClientId) : ordClientId) || 'unknown';
@@ -66,9 +66,9 @@ function calculate(orders, slaDays, clientMap, filterClientId) {
       if (orderDate) {
         const diffDays = Math.max(0, Math.floor((despatchDate - orderDate) / 86400000));
         c.totalDays += diffDays;
-        if (diffDays === 0) c.sameDay += 1;
-        if (diffDays <= slaDays) c.withinSla += 1;
-        else c.late += 1;
+        if (diffDays === 0)         c.sameDay += 1;
+        if (diffDays <= slaDays)    c.withinSla += 1;
+        else                        c.late += 1;
       }
     }
   }
@@ -77,8 +77,8 @@ function calculate(orders, slaDays, clientMap, filterClientId) {
     clientName:  c.clientName,
     orders:      c.orders,
     despatched:  c.despatched,
-    sameDayPct:  c.despatched ? Math.round((c.sameDay / c.despatched) * 100) : null,
-    slaPct:      c.despatched ? Math.round((c.withinSla / c.despatched) * 100) : null,
+    sameDayPct:  c.despatched ? Math.round((c.sameDay    / c.despatched) * 100) : null,
+    slaPct:      c.despatched ? Math.round((c.withinSla  / c.despatched) * 100) : null,
     avgDays:     c.despatched ? round(c.totalDays / c.despatched) : null,
     lateOrders:  c.late,
   })).sort((a, b) => (a.slaPct ?? -1) - (b.slaPct ?? -1));
@@ -92,8 +92,8 @@ function calculate(orders, slaDays, clientMap, filterClientId) {
   const kpis = {
     totalOrders:    total,
     despatched,
-    sameDayPct:     despatched ? Math.round((sameDay / despatched) * 100) : 0,
-    slaPct:         despatched ? Math.round((withinSla / despatched) * 100) : 0,
+    sameDayPct:     despatched ? Math.round((sameDay    / despatched) * 100) : 0,
+    slaPct:         despatched ? Math.round((withinSla  / despatched) * 100) : 0,
     avgFulfillDays: despatched ? round(totalDays / despatched) : 0,
     lateOrders:     rows.reduce((s, r) => s + r.lateOrders, 0),
   };

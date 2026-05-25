@@ -6,6 +6,8 @@
 const https   = require('https');
 const crypto  = require('crypto');
 const { mintsoftGet } = require('./mintsoft');
+const { upsertAccount, runFullSync, runIncrementalSync } = require('./sync');
+const { queryOne } = require('./db');
 
 const MINTSOFT_BASE = 'https://api.mintsoft.co.uk';
 
@@ -293,6 +295,10 @@ async function login(req, res) {
     // Create session
     const token = createSession(apiKey, clientId, username, isWarehouse, clients, warehouses);
 
+    // Trigger background sync — non-blocking, fires after response is sent
+    const sessionForSync = { username, apiKey, isWarehouse, clients, warehouses, clientId };
+    setImmediate(() => triggerBackgroundSync(sessionForSync));
+
     res.writeHead(200, {
       'Content-Type': 'application/json',
       'Set-Cookie': `session=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}; Path=/`
@@ -313,6 +319,40 @@ async function login(req, res) {
       return res.json(401, { error: 'Invalid username or password' });
     }
     res.json(500, { error: 'Login failed — please try again' });
+  }
+}
+
+async function triggerBackgroundSync(session) {
+  try {
+    const accountId = await upsertAccount(session);
+
+    // Client users: if a warehouse account already holds their data (synced recently),
+    // skip the redundant client-side sync — they'll read from the warehouse account instead.
+    if (!session.isWarehouse && session.clientId) {
+      const coveredByWarehouse = await queryOne(
+        `SELECT a.id FROM accounts a
+         JOIN warehouses w ON w.account_id = a.id
+         JOIN clients   c ON c.account_id = a.id AND c.mintsoft_id = $1
+         WHERE a.is_warehouse = true AND a.last_sync_at IS NOT NULL
+         LIMIT 1`,
+        [parseInt(session.clientId)]
+      );
+      if (coveredByWarehouse) {
+        console.log(`[sync] Client ${session.username} covered by warehouse account ${coveredByWarehouse.id} — skipping client sync`);
+        return;
+      }
+    }
+
+    const acc = await queryOne(`SELECT last_sync_at FROM accounts WHERE id = $1`, [accountId]);
+    if (!acc?.last_sync_at) {
+      console.log('[sync] First login — starting initial full sync');
+      await runFullSync(session, { triggeredBy: 'login' });
+    } else {
+      console.log('[sync] Existing data — running incremental sync');
+      await runIncrementalSync(session, { triggeredBy: 'login' });
+    }
+  } catch (err) {
+    console.error('[sync] Background sync error:', err.message);
   }
 }
 

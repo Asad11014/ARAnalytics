@@ -1,8 +1,8 @@
-// ─── server/reports/sales-trend.js ───────────────────────────────────────────
-// Compares sales velocity in two periods (e.g. last 30 days vs prior 30 days)
-// to identify SKUs that are growing fast, declining, or newly active.
+// Sales Trend Report
+// Compares sales velocity in two periods to identify growing, declining, or new SKUs.
 
-const { fetchOrders, fetchProductNames, startSSE, parseReportParams } = require('../base');
+const { resolveIds, getOrders, getSkuNames } = require('../db-base');
+const { startSSE, parseReportParams, fmt, daysAgo } = require('../base');
 
 const meta = {
   title:       'Sales Trend Report',
@@ -14,40 +14,35 @@ const meta = {
 };
 
 async function run(req, res, url, session) {
-  const { apiKey } = session;
-  const { warehouseId, clientId } = parseReportParams(url, session);
+  const { warehouseId: msWarehouseId, clientId: msClientId } = parseReportParams(url, session);
   const days = parseInt(url.searchParams.get('days') || '30');
-
   const send = startSSE(res);
 
   try {
-    // Fetch two periods: recent (last N days) and prior (N days before that)
-    const now        = new Date();
-    const recentFrom = new Date(now); recentFrom.setDate(now.getDate() - days);
-    const priorFrom  = new Date(now); priorFrom.setDate(now.getDate() - days * 2);
-    const priorTo    = new Date(now); priorTo.setDate(now.getDate() - days - 1);
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
 
-    const fmt = d => d.toISOString().split('T')[0];
+    const now       = new Date();
+    const recentFrom = fmt(daysAgo(days));
+    const priorFrom  = fmt(daysAgo(days * 2));
+    const priorTo    = fmt(daysAgo(days + 1));
+    const toDate     = fmt(now);
 
     send({ type: 'progress', message: `Fetching recent orders (last ${days} days)…` });
-    const recentOrders = await fetchOrders(apiKey, warehouseId, clientId, fmt(recentFrom), fmt(now),
-      (p) => send({ type: 'progress', ...p, message: p.stage === 'items' ? `Recent orders: items ${p.done}/${p.total}` : `Recent orders: page ${p.page}` })
-    );
+    const recentOrders = await getOrders(accountId, warehouseId, clientId, recentFrom, toDate);
 
     send({ type: 'progress', message: `Fetching prior orders (${days} days before that)…` });
-    const priorOrders = await fetchOrders(apiKey, warehouseId, clientId, fmt(priorFrom), fmt(priorTo),
-      (p) => send({ type: 'progress', ...p, message: p.stage === 'items' ? `Prior orders: items ${p.done}/${p.total}` : `Prior orders: page ${p.page}` })
-    );
+    const priorOrders = await getOrders(accountId, warehouseId, clientId, priorFrom, priorTo);
 
     send({ type: 'progress', message: 'Fetching product names…' });
-    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+    const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
 
     send({ type: 'progress', message: 'Calculating trends…' });
     const rows = calculate(recentOrders, priorOrders, skuNameMap, days);
 
     send({ type: 'done', rows, meta: {
-      recentPeriod: `${fmt(recentFrom)} → ${fmt(now)}`,
-      priorPeriod:  `${fmt(priorFrom)} → ${fmt(priorTo)}`,
+      recentPeriod: `${recentFrom} → ${toDate}`,
+      priorPeriod:  `${priorFrom} → ${priorTo}`,
       totalSkus:    rows.length,
       growing:      rows.filter(r => r.trend === 'growing').length,
       declining:    rows.filter(r => r.trend === 'declining').length,
@@ -69,22 +64,20 @@ function calculate(recentOrders, priorOrders, skuNameMap, days) {
     .map(sku => {
       const recent = recentSales[sku] || { units: 0 };
       const prior  = priorSales[sku]  || { units: 0 };
-      const name   = skuNameMap[sku] || '';
+      const name   = skuNameMap[sku]  || '';
 
       const recentVel = recent.units / days;
       const priorVel  = prior.units  / days;
 
-      // % change in velocity
       let changePct = null;
       if (priorVel > 0) changePct = Math.round(((recentVel - priorVel) / priorVel) * 100);
 
-      // Classify trend
       let trend;
-      if (prior.units === 0 && recent.units > 0)    trend = 'new';       // no prior sales
-      else if (recent.units === 0 && prior.units > 0) trend = 'stopped';  // sold before, not now
+      if (prior.units === 0 && recent.units > 0)     trend = 'new';
+      else if (recent.units === 0 && prior.units > 0) trend = 'stopped';
       else if (changePct !== null && changePct >= 20)  trend = 'growing';
       else if (changePct !== null && changePct <= -20) trend = 'declining';
-      else                                              trend = 'stable';
+      else                                             trend = 'stable';
 
       return {
         sku,
@@ -98,7 +91,6 @@ function calculate(recentOrders, priorOrders, skuNameMap, days) {
       };
     })
     .sort((a, b) => {
-      // Sort: growing first, then stable, declining, new, stopped
       const order = { growing: 0, stable: 1, declining: 2, new: 3, stopped: 4 };
       if (order[a.trend] !== order[b.trend]) return order[a.trend] - order[b.trend];
       return (b.changePct || 0) - (a.changePct || 0);

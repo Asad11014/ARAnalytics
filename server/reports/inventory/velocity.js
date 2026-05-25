@@ -1,8 +1,8 @@
 // SKU Velocity Report
 // Ranks SKUs by movement speed — picks/day, orders/week, units/month.
-// Classifies each SKU as fast / medium / slow / dead.
 
-const { fetchOrders, fetchStock, fetchProductNames, startSSE, parseReportParams } = require('../base');
+const { resolveIds, getStock, getOrders, getSkuNames } = require('../db-base');
+const { startSSE, parseReportParams } = require('../base');
 
 const meta = {
   title:       'SKU Velocity',
@@ -15,23 +15,23 @@ const meta = {
 };
 
 async function run(req, res, url, session) {
-  const { apiKey } = session;
-  const { warehouseId, clientId, dateFrom, dateTo } = parseReportParams(url, session);
+  const { warehouseId: msWarehouseId, clientId: msClientId, dateFrom, dateTo } = parseReportParams(url, session);
   const send = startSSE(res);
 
   try {
-    const orders = await fetchOrders(apiKey, warehouseId, clientId, dateFrom, dateTo,
-      p => send({ type: 'progress', message: p.stage === 'items' ? `Loading order items… ${p.done}/${p.total}` : `Loading orders… page ${p.page}` })
-    );
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
+
+    send({ type: 'progress', message: 'Fetching order history…' });
+    const orders = await getOrders(accountId, warehouseId, clientId, dateFrom, dateTo);
 
     send({ type: 'progress', message: 'Fetching stock…' });
-    const stock = await fetchStock(apiKey, warehouseId, clientId);
+    const stock = await getStock(accountId, warehouseId, clientId);
 
     send({ type: 'progress', message: 'Fetching product names…' });
-    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+    const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
 
     const days = parseInt(url.searchParams.get('days') || '30');
-
     send({ type: 'progress', message: 'Calculating velocity…' });
     const rows = calculate(orders, stock, skuNameMap, days);
 
@@ -50,7 +50,7 @@ async function run(req, res, url, session) {
 }
 
 function calculate(orders, stock, skuNameMap, days) {
-  const skuData = {};
+  const skuData  = {};
   const stockMap = {};
 
   for (const item of stock) {
@@ -70,19 +70,19 @@ function calculate(orders, stock, skuNameMap, days) {
     }
   }
 
-  const weeks = days / 7;
+  const weeks  = days / 7;
   const months = days / 30.44;
 
   const rows = Object.entries(skuData).map(([sku, d]) => {
-    const picksPerDay   = round(d.picks  / days);
+    const picksPerDay   = round(d.picks       / days);
     const ordersPerWeek = round(d.orders.size / weeks);
-    const unitsPerMonth = round(d.units  / months);
+    const unitsPerMonth = round(d.units       / months);
 
     let velocityClass;
-    if (picksPerDay >= 5)       velocityClass = 'fast';
-    else if (picksPerDay >= 1)  velocityClass = 'medium';
-    else if (picksPerDay > 0)   velocityClass = 'slow';
-    else                        velocityClass = 'dead';
+    if (picksPerDay >= 5)      velocityClass = 'fast';
+    else if (picksPerDay >= 1) velocityClass = 'medium';
+    else if (picksPerDay > 0)  velocityClass = 'slow';
+    else                       velocityClass = 'dead';
 
     return {
       sku,
@@ -97,7 +97,6 @@ function calculate(orders, stock, skuNameMap, days) {
     };
   });
 
-  // Include stocked SKUs with zero velocity
   for (const [sku, qty] of Object.entries(stockMap)) {
     if (!skuData[sku] && qty > 0) {
       rows.push({

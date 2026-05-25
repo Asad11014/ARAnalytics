@@ -1,8 +1,8 @@
 // Inventory Health Score
-// Produces a per-SKU and overall health score combining stockout risk,
-// overstock risk, and sell-through rate.
+// Composite health score per SKU combining stockout risk, overstock, and sell-through.
 
-const { fetchStock, fetchOrders, fetchProductNames, startSSE, parseReportParams } = require('../base');
+const { resolveIds, getStock, getOrders, getSkuNames } = require('../db-base');
+const { startSSE, parseReportParams } = require('../base');
 
 const meta = {
   title:       'Inventory Health Score',
@@ -15,20 +15,21 @@ const meta = {
 };
 
 async function run(req, res, url, session) {
-  const { apiKey } = session;
-  const { warehouseId, clientId, dateFrom, dateTo } = parseReportParams(url, session);
+  const { warehouseId: msWarehouseId, clientId: msClientId, dateFrom, dateTo } = parseReportParams(url, session);
   const send = startSSE(res);
 
   try {
-    send({ type: 'progress', message: 'Fetching stock…' });
-    const stock = await fetchStock(apiKey, warehouseId, clientId);
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
 
-    const orders = await fetchOrders(apiKey, warehouseId, clientId, dateFrom, dateTo,
-      p => send({ type: 'progress', message: p.stage === 'items' ? `Loading order items… ${p.done}/${p.total}` : `Loading orders… page ${p.page}` })
-    );
+    send({ type: 'progress', message: 'Fetching stock…' });
+    const stock = await getStock(accountId, warehouseId, clientId);
+
+    send({ type: 'progress', message: 'Fetching order history…' });
+    const orders = await getOrders(accountId, warehouseId, clientId, dateFrom, dateTo);
 
     send({ type: 'progress', message: 'Fetching product names…' });
-    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+    const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
 
     const days = parseInt(url.searchParams.get('days') || '30');
     send({ type: 'progress', message: 'Calculating health scores…' });
@@ -42,7 +43,6 @@ async function run(req, res, url, session) {
 }
 
 function calculate(stock, orders, skuNameMap, days) {
-  // Build velocity map
   const velocity = {};
   for (const order of orders) {
     for (const item of (order.OrderItems || [])) {
@@ -58,27 +58,25 @@ function calculate(stock, orders, skuNameMap, days) {
     .map(item => {
       const sku      = item.SKU || item.Sku || '';
       const stockQty = item.Level || 0;
-      const name     = skuNameMap[sku] || item.Name || '';
+      const name     = item.ProductName || skuNameMap[sku] || '';
       const sold     = velocity[sku] || 0;
       const dailyVel = sold / days;
 
       const daysOfCover = dailyVel > 0 ? Math.round(stockQty / dailyVel) : null;
       const sellThrough = sold > 0 ? round((sold / (sold + stockQty)) * 100) : 0;
 
-      // Score components (0–100 each, higher = healthier)
       let stockoutScore = 100;
       if (daysOfCover !== null) {
-        if (daysOfCover < 7)  stockoutScore = 10;
+        if (daysOfCover < 7)       stockoutScore = 10;
         else if (daysOfCover < 14) stockoutScore = 40;
         else if (daysOfCover < 30) stockoutScore = 70;
-      } else if (sold === 0)  stockoutScore = 50; // no sales, not at stockout risk
+      } else if (sold === 0)       stockoutScore = 50;
 
       let overstockScore = 100;
       if (daysOfCover !== null && daysOfCover > 180) overstockScore = 20;
       else if (daysOfCover !== null && daysOfCover > 90) overstockScore = 60;
 
       const velocityScore = dailyVel > 0 ? Math.min(100, Math.round(dailyVel * 20)) : 20;
-
       const score = Math.round((stockoutScore * 0.4) + (overstockScore * 0.35) + (velocityScore * 0.25));
 
       let status;
@@ -88,7 +86,7 @@ function calculate(stock, orders, skuNameMap, days) {
 
       return { sku, name, stock: stockQty, sold, dailyVel: round(dailyVel, 3), daysOfCover, sellThrough, score, status };
     })
-    .sort((a, b) => a.score - b.score); // worst first
+    .sort((a, b) => a.score - b.score);
 
   const overall = {
     healthy:   rows.filter(r => r.status === 'healthy').length,

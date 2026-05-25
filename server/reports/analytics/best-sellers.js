@@ -1,37 +1,33 @@
-// ─── server/reports/best-sellers.js ──────────────────────────────────────────
+// Best & Worst Sellers
 // Ranks SKUs by units sold and order frequency over a configurable period.
-// Helps clients identify their top performers and worst performers.
 
-const { fetchOrders, fetchProductNames, buildSkuSales, startSSE, parseReportParams } = require('../base');
+const { resolveIds, getOrders, getSkuNames } = require('../db-base');
+const { startSSE, parseReportParams } = require('../base');
 
 const meta = {
   title:       'Best & Worst Sellers',
   description: 'See which SKUs are driving your business and which are underperforming over any time period.',
   icon:        '🏆',
   params: [
-    { id: 'days',  label: 'Period (days)', type: 'number', default: 30 },
+    { id: 'days',  label: 'Period (days)',         type: 'number', default: 30 },
     { id: 'limit', label: 'Show top/bottom N SKUs', type: 'number', default: 20 },
   ]
 };
 
 async function run(req, res, url, session) {
-  const { apiKey } = session;
-  const { warehouseId, clientId, dateFrom, dateTo } = parseReportParams(url, session);
+  const { warehouseId: msWarehouseId, clientId: msClientId, dateFrom, dateTo } = parseReportParams(url, session);
   const limit = parseInt(url.searchParams.get('limit') || '20');
-
-  const send = startSSE(res);
+  const send  = startSSE(res);
 
   try {
-    const orders = await fetchOrders(apiKey, warehouseId, clientId, dateFrom, dateTo,
-      (p) => send({ type: 'progress', ...p,
-        message: p.stage === 'items'
-          ? `Fetching order items… ${p.done}/${p.total}`
-          : `Fetching orders… page ${p.page} (${p.total} so far)`
-      })
-    );
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
+
+    send({ type: 'progress', message: 'Fetching order history…' });
+    const orders = await getOrders(accountId, warehouseId, clientId, dateFrom, dateTo);
 
     send({ type: 'progress', message: 'Fetching product names…' });
-    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+    const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
 
     send({ type: 'progress', message: 'Ranking SKUs…' });
     const { topSellers, worstSellers, all } = calculate(orders, skuNameMap, { limit });
@@ -73,7 +69,6 @@ function calculate(orders, skuNameMap, { limit }) {
     }))
     .sort((a, b) => b.totalSold - a.totalSold);
 
-  // Add rank
   all.forEach((r, i) => { r.rank = i + 1; });
 
   return {

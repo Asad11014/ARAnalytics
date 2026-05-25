@@ -3,29 +3,25 @@ import { useEffect } from 'react'
 import { useSession } from '../context/SessionContext'
 import { UIProvider, useUI } from '../context/UIContext'
 import Sidebar from '../components/Sidebar'
-import Dashboard from './Dashboard'
+import Dashboard   from './Dashboard'
+import Calendar    from './Calendar'
+import Quotations  from './Quotations'
+import MyQuotes    from './MyQuotes'
 
 // Inventory
 import HealthScore      from './inventory/HealthScore'
 import Snapshot         from './inventory/Snapshot'
 import Aging            from './inventory/Aging'
 import Velocity         from './inventory/Velocity'
-import StockoutAnalysis from './inventory/StockoutAnalysis'
-import Turnover         from './inventory/Turnover'
-
 // Operations
 import Fulfillment from './operations/Fulfillment'
-import Receiving   from './operations/Receiving'
-import Errors      from './operations/Errors'
 
 // Financial
 import Profitability from './financial/Profitability'
-import Billing       from './financial/Billing'
 
 // Analytics
 import BestSellers from './analytics/BestSellers'
 import SalesTrend  from './analytics/SalesTrend'
-import Forecasting from './analytics/Forecasting'
 
 function WarehouseOnly({ children }) {
   const { session } = useSession()
@@ -80,28 +76,24 @@ function AppShellLayout() {
       <main className="lg:ml-60 flex-1 min-h-screen flex flex-col pt-12 lg:pt-0 min-w-0 overflow-x-hidden">
         <Routes>
           <Route index element={<Dashboard />} />
+          <Route path="calendar"    element={<Calendar />} />
+          <Route path="quotations"  element={<Quotations />} />
+          <Route path="my-quotes"   element={<MyQuotes />} />
 
           {/* Inventory */}
           <Route path="inventory/health-score"  element={<HealthScore />} />
           <Route path="inventory/snapshot"      element={<Snapshot />} />
           <Route path="inventory/aging"         element={<Aging />} />
           <Route path="inventory/velocity"      element={<Velocity />} />
-          <Route path="inventory/stockout"      element={<StockoutAnalysis />} />
-          <Route path="inventory/turnover"      element={<Turnover />} />
-
           {/* Operations — warehouse users only */}
           <Route path="operations/fulfillment"  element={<WarehouseOnly><Fulfillment /></WarehouseOnly>} />
-          <Route path="operations/receiving"    element={<WarehouseOnly><Receiving /></WarehouseOnly>} />
-          <Route path="operations/errors"       element={<WarehouseOnly><Errors /></WarehouseOnly>} />
 
           {/* Financial */}
           <Route path="financial/profitability" element={<Profitability />} />
-          <Route path="financial/billing"       element={<Billing />} />
 
           {/* Analytics */}
           <Route path="analytics/best-sellers"  element={<BestSellers />} />
           <Route path="analytics/sales-trend"   element={<SalesTrend />} />
-          <Route path="analytics/forecasting"   element={<Forecasting />} />
 
           {/* Redirect old flat URLs to new paths */}
           <Route path="reports/best-sellers"  element={<Navigate to="/app/analytics/best-sellers" replace />} />

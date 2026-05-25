@@ -1,7 +1,8 @@
 // Inventory Aging Report
 // Buckets each SKU's stock by days since last sale: 0-30 / 31-60 / 61-90 / 90+
 
-const { fetchStock, fetchOrders, fetchProductNames, startSSE, parseReportParams } = require('../base');
+const { resolveIds, getStock, getOrders, getSkuNames } = require('../db-base');
+const { startSSE, parseReportParams } = require('../base');
 
 const meta = {
   title:       'Inventory Aging',
@@ -14,29 +15,30 @@ const meta = {
 };
 
 async function run(req, res, url, session) {
-  const { apiKey } = session;
-  const { warehouseId, clientId, dateFrom, dateTo } = parseReportParams(url, session);
+  const { warehouseId: msWarehouseId, clientId: msClientId, dateFrom, dateTo } = parseReportParams(url, session);
   const send = startSSE(res);
 
   try {
-    send({ type: 'progress', message: 'Fetching stock levels…' });
-    const stock = await fetchStock(apiKey, warehouseId, clientId);
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
 
-    const orders = await fetchOrders(apiKey, warehouseId, clientId, dateFrom, dateTo,
-      p => send({ type: 'progress', message: p.stage === 'items' ? `Loading order items… ${p.done}/${p.total}` : `Loading orders… page ${p.page}` })
-    );
+    send({ type: 'progress', message: 'Fetching stock levels…' });
+    const stock = await getStock(accountId, warehouseId, clientId);
+
+    send({ type: 'progress', message: 'Fetching order history…' });
+    const orders = await getOrders(accountId, warehouseId, clientId, dateFrom, dateTo);
 
     send({ type: 'progress', message: 'Fetching product names…' });
-    const skuNameMap = await fetchProductNames(apiKey, warehouseId, clientId);
+    const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
 
     send({ type: 'progress', message: 'Calculating aging…' });
     const rows = calculate(stock, orders, skuNameMap);
 
     const summary = {
-      active:   rows.filter(r => r.bucket === '0–30d').length,
-      watch:    rows.filter(r => r.bucket === '31–60d').length,
-      atRisk:   rows.filter(r => r.bucket === '61–90d').length,
-      dead:     rows.filter(r => r.bucket === '90d+').length,
+      active:    rows.filter(r => r.bucket === '0–30d').length,
+      watch:     rows.filter(r => r.bucket === '31–60d').length,
+      atRisk:    rows.filter(r => r.bucket === '61–90d').length,
+      dead:      rows.filter(r => r.bucket === '90d+').length,
       totalSkus: rows.length,
     };
 
@@ -48,7 +50,6 @@ async function run(req, res, url, session) {
 }
 
 function calculate(stock, orders, skuNameMap) {
-  // Build map: sku → most recent sale date
   const lastSaleDate = {};
   for (const order of orders) {
     const date = order.DespatchDate || order.OrderDate || '';
@@ -68,7 +69,7 @@ function calculate(stock, orders, skuNameMap) {
     .map(item => {
       const sku      = item.SKU || item.Sku || '';
       const stockQty = item.Level || 0;
-      const name     = skuNameMap[sku] || item.Name || '';
+      const name     = item.ProductName || skuNameMap[sku] || '';
       const lastSale = lastSaleDate[sku];
       const daysSince = lastSale ? Math.floor((now - lastSale) / 86400000) : 999;
 
@@ -78,7 +79,12 @@ function calculate(stock, orders, skuNameMap) {
       else if (daysSince <= 90) { bucket = '61–90d'; severity = 'at-risk'; }
       else                      { bucket = '90d+';   severity = 'dead'; }
 
-      return { sku, name, stock: stockQty, daysSince: daysSince === 999 ? null : daysSince, bucket, severity, lastSaleDate: lastSale ? lastSale.toISOString().split('T')[0] : null };
+      return {
+        sku, name, stock: stockQty,
+        daysSince:    daysSince === 999 ? null : daysSince,
+        bucket, severity,
+        lastSaleDate: lastSale ? lastSale.toISOString().split('T')[0] : null
+      };
     })
     .sort((a, b) => (b.daysSince ?? 9999) - (a.daysSince ?? 9999));
 }

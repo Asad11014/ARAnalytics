@@ -1,40 +1,30 @@
 // ─── server/reports/dashboard.js ──────────────────────────────────────────────
-// Aggregated summary data for the home dashboard.
-// Client users get their own inventory overview.
-// Warehouse users get a cross-client performance view.
+// Aggregated summary data for the home dashboard. Reads from PostgreSQL.
 
-const {
-  fetchStock, fetchOrders, fetchOrderHeaders,
-  fetchProductNames, fetchUnconfirmedInvoiceSummary,
-  buildSkuSales, buildSkuDailySales,
-  fmt, daysAgo, startSSE
-} = require('./base');
+const { resolveIds, getStock, getOrders, getOrderHeaders, getSkuNames, getCurrentAccrualsMap } = require('./db-base');
+const { buildSkuSales, buildSkuDailySales, fmt, daysAgo, startSSE } = require('./base');
 
-// ── Server-side cache ─────────────────────────────────────────────────────────
-// Keyed by warehouseId:clientId:role — persists across page navigations.
-// Pass ?refresh=true to bypass and force a fresh Mintsoft API fetch.
-const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const CACHE_TTL_MS = 30 * 60 * 1000;
 const dashboardCache = new Map();
 
 async function run(req, res, url, session) {
   const send = startSSE(res);
-  const { apiKey, isWarehouse, clientId: sessionClientId, clients } = session;
+  const { isWarehouse, clientId: sessionMsClientId, clients } = session;
 
-  const warehouseId = url.searchParams.get('warehouseId');
-  if (!warehouseId) {
+  const msWarehouseId = url.searchParams.get('warehouseId');
+  if (!msWarehouseId) {
     send({ type: 'error', message: 'warehouseId is required' });
     res.end();
     return;
   }
 
-  const clientId = isWarehouse
+  const msClientId = isWarehouse
     ? (url.searchParams.get('clientId') || null)
-    : sessionClientId;
+    : sessionMsClientId;
 
   const refresh  = url.searchParams.get('refresh') === 'true';
-  const cacheKey = `${warehouseId}:${clientId || ''}:${isWarehouse ? 'wh' : 'cl'}`;
+  const cacheKey = `${msWarehouseId}:${msClientId || ''}:${isWarehouse ? 'wh' : 'cl'}`;
 
-  // Cache hit — respond immediately without calling Mintsoft
   if (!refresh) {
     const cached = dashboardCache.get(cacheKey);
     if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
@@ -45,6 +35,9 @@ async function run(req, res, url, session) {
   }
 
   try {
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
+
     const today   = new Date();
     const from30  = fmt(daysAgo(30));
     const from60  = fmt(daysAgo(60));
@@ -53,69 +46,56 @@ async function run(req, res, url, session) {
 
     let data;
 
-    if (isWarehouse) {
-      const from21 = fmt(daysAgo(21));
-
+    if (isWarehouse && !msClientId) {
+      // Full cross-client warehouse view
       send({ type: 'progress', message: 'Fetching stock levels…' });
-      const stock = await fetchStock(apiKey, warehouseId, null);
+      const stock = await getStock(accountId, warehouseId, null);
 
       send({ type: 'progress', message: 'Fetching order volume (30 days)…' });
-      const orders30 = await fetchOrderHeaders(apiKey, warehouseId, null, from30, toDate);
+      const orders30 = await getOrderHeaders(accountId, warehouseId, null, from30, toDate);
 
-      send({ type: 'progress', message: 'Fetching order volume (previous month)…' });
-      const ordersPrev = await fetchOrderHeaders(apiKey, warehouseId, null, from60, to30ago);
+      send({ type: 'progress', message: 'Fetching order volume (previous period)…' });
+      const ordersPrev = await getOrderHeaders(accountId, warehouseId, null, from60, to30ago);
 
-      // Full order items for 21-day stockout check and SKU name lookup
-      send({ type: 'progress', message: 'Fetching recent sales detail (21 days)…' });
-      const orders21 = await fetchOrders(
-        apiKey, warehouseId, null, from21, toDate,
-        (p) => send({ type: 'progress', message: p.stage === 'items' ? `Loading order items… ${p.done}/${p.total}` : `Fetching orders… page ${p.page}` })
-      );
+      send({ type: 'progress', message: 'Fetching recent order detail (21 days)…' });
+      const orders21 = await getOrders(accountId, warehouseId, null, fmt(daysAgo(21)), toDate);
 
-      // Fetch unconfirmed invoice summary per client in parallel (5 at a time)
-      // This gives accrued charges for the current month before the invoice is finalised
-      send({ type: 'progress', message: 'Fetching monthly revenue (invoice summaries)…' });
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      const fromMonth    = fmt(startOfMonth);
-      const clientInvoices = {};
-      const INVOICE_BATCH  = 5;
-      const allClients     = clients || [];
-      for (let i = 0; i < allClients.length; i += INVOICE_BATCH) {
-        await Promise.all(
-          allClients.slice(i, i + INVOICE_BATCH).map(async (c) => {
-            const cid = c.ID || c.id;
-            if (!cid) return;
-            const summary = await fetchUnconfirmedInvoiceSummary(apiKey, cid, fromMonth, toDate);
-            if (summary) clientInvoices[String(cid)] = summary;
-          })
-        );
-      }
+      send({ type: 'progress', message: 'Fetching current month revenue…' });
+      const { map: clientInvoices, source: revenueSource } = await getCurrentAccrualsMap(accountId);
 
       send({ type: 'progress', message: 'Fetching product catalogue…' });
-      const skuNameMap = await fetchProductNames(apiKey, warehouseId, null);
+      const skuNameMap = await getSkuNames(accountId, warehouseId, null);
 
-      data = computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, clientInvoices, allClients, skuNameMap);
-    } else {
+      data = computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, clientInvoices, clients || [], skuNameMap, revenueSource);
+    } else if (isWarehouse && msClientId) {
+      // Warehouse user drilling into a specific client — show that client's dashboard
+      if (!clientId) throw new Error(`Client ${msClientId} not found in database — trigger a sync`);
+
       send({ type: 'progress', message: 'Fetching stock levels…' });
-      const stock = await fetchStock(apiKey, warehouseId, clientId);
-
-      // If clientId was not set at login, infer it from the first stock item
-      // (Mintsoft auto-scopes stock API responses to the caller's client)
-      const effectiveClientId = clientId
-        || (stock.length > 0 ? String(stock[0].ClientId || stock[0].clientId || '') : null)
-        || null;
+      const stock = await getStock(accountId, warehouseId, clientId);
 
       send({ type: 'progress', message: 'Fetching orders (last 30 days)…' });
-      const orders30 = await fetchOrders(
-        apiKey, warehouseId, effectiveClientId, from30, toDate,
-        (p) => send({ type: 'progress', message: p.stage === 'items' ? `Loading order items… ${p.done}/${p.total}` : `Fetching orders… page ${p.page}` })
-      );
+      const orders30 = await getOrders(accountId, warehouseId, clientId, from30, toDate);
 
       send({ type: 'progress', message: 'Fetching previous period…' });
-      const ordersPrev = await fetchOrderHeaders(apiKey, warehouseId, effectiveClientId, from60, to30ago);
+      const ordersPrev = await getOrderHeaders(accountId, warehouseId, clientId, from60, to30ago);
 
       send({ type: 'progress', message: 'Fetching product catalogue…' });
-      const skuNameMap = await fetchProductNames(apiKey, warehouseId, effectiveClientId);
+      const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
+
+      data = computeClientDashboard(stock, orders30, ordersPrev, skuNameMap);
+    } else {
+      send({ type: 'progress', message: 'Fetching stock levels…' });
+      const stock = await getStock(accountId, warehouseId, clientId);
+
+      send({ type: 'progress', message: 'Fetching orders (last 30 days)…' });
+      const orders30 = await getOrders(accountId, warehouseId, clientId, from30, toDate);
+
+      send({ type: 'progress', message: 'Fetching previous period…' });
+      const ordersPrev = await getOrderHeaders(accountId, warehouseId, clientId, from60, to30ago);
+
+      send({ type: 'progress', message: 'Fetching product catalogue…' });
+      const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
 
       data = computeClientDashboard(stock, orders30, ordersPrev, skuNameMap);
     }
@@ -135,10 +115,9 @@ async function run(req, res, url, session) {
 function computeClientDashboard(stock, orders30, ordersPrev, skuNameMap) {
   const skuSales30 = buildSkuSales(orders30);
 
-  const units30    = Object.values(skuSales30).reduce((s, n) => s + n, 0);
-  const unitsPrev  = sumOrderHeaderUnits(ordersPrev);
+  const units30   = Object.values(skuSales30).reduce((s, n) => s + n, 0);
+  const unitsPrev = sumOrderHeaderUnits(ordersPrev);
 
-  // Stock classification
   let healthy = 0, lowStock = 0, overstock = 0, deadStock = 0, outOfStock = 0;
   const stockMap    = {};
   const reorderList = [];
@@ -170,7 +149,6 @@ function computeClientDashboard(stock, orders30, ordersPrev, skuNameMap) {
     }
   }
 
-  // Top products by units sold
   const topProducts = Object.entries(skuSales30)
     .sort(([, a], [, b]) => b - a)
     .slice(0, 10)
@@ -184,7 +162,6 @@ function computeClientDashboard(stock, orders30, ordersPrev, skuNameMap) {
       };
     });
 
-  // Daily sales trend
   const dailySales  = buildSkuDailySales(orders30);
   const dailyTotals = {};
   for (const days of Object.values(dailySales)) {
@@ -196,7 +173,6 @@ function computeClientDashboard(stock, orders30, ordersPrev, skuNameMap) {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, units]) => ({ date, units }));
 
-  // Average days of cover (active SKUs only)
   const coverArr = Object.values(stockMap)
     .filter(s => s.sold30 > 0 && s.cover !== Infinity && s.cover > 0)
     .map(s => s.cover);
@@ -225,8 +201,7 @@ function computeClientDashboard(stock, orders30, ordersPrev, skuNameMap) {
 
 // ── Warehouse dashboard computation ───────────────────────────────────────────
 
-function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, clientInvoices, clients, skuNameMap) {
-  // Build activeSKUs from 21-day order items (stockout filter — names come from product catalogue)
+function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, clientInvoices, clients, skuNameMap, revenueSource = 'accrual') {
   const activeSKUs = new Set();
   for (const order of orders21) {
     for (const item of (order.OrderItems || [])) {
@@ -235,14 +210,12 @@ function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, client
     }
   }
 
-  // Per-client order counts (from 30-day headers)
   const clientOrders = {};
   for (const o of orders30) {
     const cid = String(o.ClientId || o.clientId || '');
     clientOrders[cid] = (clientOrders[cid] || 0) + 1;
   }
 
-  // Per-client stock stats
   const clientStock = {};
   for (const item of stock) {
     const cid = String(item.ClientId || item.clientId || '');
@@ -252,7 +225,6 @@ function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, client
     if ((item.Level || 0) === 0 && activeSKUs.has(sku)) clientStock[cid].stockouts++;
   }
 
-  // Client breakdown table (orders + health)
   const clientBreakdown = clients
     .filter(c => c.ID || c.id)
     .map(c => {
@@ -270,7 +242,6 @@ function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, client
     })
     .sort((a, b) => b.orders30 - a.orders30);
 
-  // Stockout alerts — confirmed sales in last 21 days only
   const stockAlerts = stock
     .filter(item => {
       const sku = item.SKU || item.Sku || '';
@@ -287,7 +258,6 @@ function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, client
       };
     });
 
-  // Weekly order volume trend (~8-week view)
   const weeklyMap = {};
   for (const o of [...ordersPrev, ...orders30]) {
     const date = (o.DespatchDate || o.OrderDate || '').split('T')[0];
@@ -302,14 +272,11 @@ function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, client
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([week, orders]) => ({ week, orders }));
 
-  // Month-to-date revenue from unconfirmed invoice summaries (accrued charges, not yet billed)
   const monthlyRevenue = clients
     .filter(c => c.ID || c.id)
     .map(c => {
       const cid = String(c.ID || c.id);
       const inv = clientInvoices[cid] || {};
-
-      // Sum all charge components from the unconfirmed invoice summary
       const revenue =
         (inv.PickingCost              || 0) +
         (inv.PostageCost              || 0) +
@@ -321,15 +288,14 @@ function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, client
         (inv.GoodsInCost              || 0) +
         (inv.StorageCost              || 0) +
         (inv.AdminFee                 || 0);
-
       return {
-        id:       cid,
-        name:     c.Name || c.name,
-        revenue:  Math.round(revenue * 100) / 100,
-        picking:  Math.round((inv.PickingCost             || 0) * 100) / 100,
-        postage:  Math.round((inv.PostageCost             || 0) * 100) / 100,
-        storage:  Math.round((inv.StorageCost             || 0) * 100) / 100,
-        other:    Math.round(((inv.ReworkCost || 0) + (inv.PackagingCost || 0) + (inv.GenericInvoiceItemsCost || 0) + (inv.CollectionsCost || 0) + (inv.ReturnsCost || 0) + (inv.GoodsInCost || 0) + (inv.AdminFee || 0)) * 100) / 100,
+        id:      cid,
+        name:    c.Name || c.name,
+        revenue: Math.round(revenue * 100) / 100,
+        picking: Math.round((inv.PickingCost  || 0) * 100) / 100,
+        postage: Math.round((inv.PostageCost  || 0) * 100) / 100,
+        storage: Math.round((inv.StorageCost  || 0) * 100) / 100,
+        other:   Math.round(((inv.ReworkCost || 0) + (inv.PackagingCost || 0) + (inv.GenericInvoiceItemsCost || 0) + (inv.CollectionsCost || 0) + (inv.ReturnsCost || 0) + (inv.GoodsInCost || 0) + (inv.AdminFee || 0)) * 100) / 100,
       };
     })
     .filter(c => c.revenue > 0)
@@ -347,7 +313,8 @@ function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, client
     clientBreakdown,
     stockAlerts,
     weeklyTrend,
-    monthlyRevenue
+    monthlyRevenue,
+    revenueSource
   };
 }
 

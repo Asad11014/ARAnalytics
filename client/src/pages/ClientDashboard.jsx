@@ -6,7 +6,8 @@ import { fetchReportSSE }    from '../lib/sse'
 import StatCard      from '../components/StatCard'
 import StatusBar     from '../components/StatusBar'
 import SortableTable from '../components/SortableTable'
-import Badge from '../components/Badge'
+import Badge         from '../components/Badge'
+import MiniCalendar  from '../components/MiniCalendar'
 
 const CHART_FONTS = { sans: 'Syne, sans-serif', mono: '"DM Mono", monospace' }
 const HEALTH_COLORS = ['#16a34a', '#e03355', '#c79a51', '#9ca3af', '#b91c1c']
@@ -24,14 +25,14 @@ export default function ClientDashboard() {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    if (warehouseId) load()
+    if (warehouseId) load(false)
   }, [warehouseId])
 
-  async function load() {
+  async function load(refresh = false) {
     setLoading(true)
     setStatus({ msg: 'Loading dashboard…', type: 'loading' })
     try {
-      const url    = buildDashboardURL({ warehouseId, clientId: session?.clientId })
+      const url    = buildDashboardURL({ warehouseId, clientId: session?.clientId, refresh })
       const result = await fetchReportSSE(url, p => setStatus({ msg: p.message, type: 'loading' }))
       setData(result)
       setStatus({ msg: '', type: null })
@@ -156,7 +157,7 @@ export default function ClientDashboard() {
           <div className="font-mono text-[11px] text-ink-muted hidden sm:block">Your inventory overview — last 30 days</div>
         </div>
         <button
-          onClick={load}
+          onClick={() => load(true)}
           disabled={loading}
           className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-sans font-bold text-xs rounded px-3 sm:px-4 py-2 transition-colors disabled:opacity-50 flex-shrink-0"
         >
@@ -185,7 +186,7 @@ export default function ClientDashboard() {
 
         {/* Charts row */}
         {data && (
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
             {/* Sales trend */}
             <div className="xl:col-span-2 bg-brand-surface border border-brand-border rounded-lg p-5">
               <div className="font-mono text-[9px] text-primary uppercase tracking-widest mb-4">
@@ -223,6 +224,9 @@ export default function ClientDashboard() {
             </div>
           </div>
         )}
+
+        {/* Mini calendar */}
+        {data && <MiniCalendar />}
 
         {/* Tables row */}
         {data && (

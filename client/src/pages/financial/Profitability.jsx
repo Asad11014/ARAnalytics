@@ -49,6 +49,9 @@ const WAREHOUSE_COLS = [
 ]
 
 function WarehouseView({ rows, meta, status, loading, onRun, onExport }) {
+  const PERIODS = buildPeriods(12)
+  const [selectedPeriod, setSelectedPeriod] = useState(PERIODS[0])
+
   const chartOpts = rows?.length ? {
     chart: { type: 'bar', background: 'transparent', toolbar: { show: false }, stacked: true, animations: { speed: 400 } },
     plotOptions: { bar: { horizontal: true, borderRadius: 2, barHeight: '60%' } },
@@ -70,12 +73,21 @@ function WarehouseView({ rows, meta, status, loading, onRun, onExport }) {
       <header className="bg-brand-surface border-b border-brand-border px-4 sm:px-7 min-h-[52px] flex items-center justify-between sticky top-0 z-40 gap-2">
         <div>
           <div className="font-sans font-bold text-[15px] text-ink">Revenue Breakdown</div>
-          <div className="font-mono text-[11px] text-ink-muted hidden sm:block">Revenue breakdown per client — current month to date</div>
+          <div className="font-mono text-[11px] text-ink-muted hidden sm:block">Revenue breakdown per client by billing period</div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          <select
+            value={selectedPeriod.yymm}
+            onChange={e => setSelectedPeriod(PERIODS.find(p => p.yymm === e.target.value) || PERIODS[0])}
+            className="bg-brand-bg border border-brand-border rounded text-ink font-mono text-[11px] px-2 py-1.5 focus:outline-none focus:border-primary"
+          >
+            {PERIODS.map(p => (
+              <option key={p.yymm} value={p.yymm}>{p.label}{p.isCurrent ? ' (current)' : ''}</option>
+            ))}
+          </select>
           {rows && <button onClick={onExport}
             className="border border-brand-border rounded text-ink-muted font-mono text-[11px] px-3 py-1.5 hover:border-gold hover:text-gold transition-colors">Export CSV</button>}
-          <button onClick={onRun} disabled={loading}
+          <button onClick={() => onRun(selectedPeriod.from, selectedPeriod.to)} disabled={loading}
             className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-sans font-bold text-xs rounded px-4 py-2 transition-colors disabled:opacity-50">
             {loading ? '⟳ Loading…' : '▶ Load Report'}
           </button>
@@ -87,8 +99,8 @@ function WarehouseView({ rows, meta, status, loading, onRun, onExport }) {
         {meta && rows && (
           <>
             <div className="flex gap-3 flex-wrap">
-              <StatCard label="Total Revenue (MTD)" value={fmtGBP(meta.totalRevenue)} accent="primary" />
-              <StatCard label="Active Clients"       value={meta.totalClients} />
+              <StatCard label="Total Revenue" value={fmtGBP(meta.totalRevenue)} accent="primary" />
+              <StatCard label="Active Clients" value={meta.totalClients} />
               {meta.period && <StatCard label="Period" value={meta.period} />}
             </div>
             {chartOpts && rows.length > 0 && (
@@ -108,7 +120,7 @@ function WarehouseView({ rows, meta, status, loading, onRun, onExport }) {
                 />
               </div>
             )}
-            <SortableTable columns={WAREHOUSE_COLS} rows={rows} emptyMessage="No billing activity this month." />
+            <SortableTable columns={WAREHOUSE_COLS} rows={rows} emptyMessage="No billing activity for this period." />
           </>
         )}
       </div>
@@ -319,11 +331,11 @@ export default function Profitability() {
       .catch(() => {})
   }, [session?.isWarehouse, warehouseId])
 
-  async function runWarehouse() {
+  async function runWarehouse(from, to) {
     if (!warehouseId) { setStatus({ msg: 'Select a warehouse first.', type: 'error' }); return }
     setLoading(true); setData(null)
     try {
-      const url = buildReportURL('profitability', { warehouseId })
+      const url = buildReportURL('profitability', { warehouseId, ...(from ? { from, to } : {}) })
       const res = await fetchReportSSE(url, p => setStatus({ msg: p.message, type: 'loading' }))
       setData(res)
       setStatus({ msg: `${(res.rows || []).length} clients with billing activity`, type: 'success' })
