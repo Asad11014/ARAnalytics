@@ -12,12 +12,17 @@ const reports   = require('./reports/index');
 const dashboard = require('./reports/dashboard');
 const calendar    = require('./calendar');
 const quotations  = require('./quotations');
+const { ensureCoreSchema } = require('./schema');
 const { runFullSync, runIncrementalSync, getAccountId, syncGoodsInOnly } = require('./sync');
 const { query, queryOne } = require('./db');
 
-// Bootstrap schemas on startup
-calendar.ensureSchema().catch(e => console.error('[calendar] Schema error:', e.message));
-quotations.ensureSchema().catch(e => console.error('[quotations] Schema error:', e.message));
+// Bootstrap schemas on startup — core tables first, then dependent tables
+ensureCoreSchema()
+  .then(() => Promise.all([
+    calendar.ensureSchema(),
+    quotations.ensureSchema(),
+  ]))
+  .catch(e => console.error('[schema] Bootstrap error:', e.message));
 
 const DIST_DIR = path.join(__dirname, '../client/dist');
 
