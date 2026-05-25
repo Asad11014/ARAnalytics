@@ -101,7 +101,7 @@ const server = http.createServer(async (req, res) => {
       const [account, lastJob] = await Promise.all([
         queryOne(`SELECT last_sync_at FROM accounts WHERE id = $1`, [accountId]),
         queryOne(
-          `SELECT id, entity, triggered_by, status, records_synced, error, started_at, completed_at
+          `SELECT id, entity, triggered_by, status, records_synced, current_step, error, started_at, completed_at
            FROM sync_jobs WHERE account_id = $1 ORDER BY started_at DESC LIMIT 1`,
           [accountId]
         ),

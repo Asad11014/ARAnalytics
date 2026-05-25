@@ -144,11 +144,13 @@ async function ensureCoreSchema() {
       triggered_by   TEXT    NOT NULL DEFAULT 'cron',
       status         TEXT    NOT NULL DEFAULT 'running',
       records_synced INTEGER NOT NULL DEFAULT 0,
+      current_step   TEXT,
       error          TEXT,
       started_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       completed_at   TIMESTAMPTZ
     )
   `);
+  await query(`ALTER TABLE sync_jobs ADD COLUMN IF NOT EXISTS current_step TEXT`);
 
   // ── Indexes (IF NOT EXISTS requires Postgres 9.5+, safe to re-run) ────────────
   await query(`CREATE INDEX IF NOT EXISTS orders_account_wh_date_idx   ON orders      (account_id, warehouse_id, despatch_date DESC)`);

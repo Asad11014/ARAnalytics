@@ -44,9 +44,13 @@ async function startJob(accountId, entity, triggeredBy) {
 
 async function completeJob(jobId, count) {
   await query(
-    `UPDATE sync_jobs SET status = 'success', records_synced = $2, completed_at = NOW() WHERE id = $1`,
+    `UPDATE sync_jobs SET status = 'success', records_synced = $2, current_step = NULL, completed_at = NOW() WHERE id = $1`,
     [jobId, count]
   );
+}
+
+async function updateJobStep(jobId, step) {
+  await query(`UPDATE sync_jobs SET current_step = $2 WHERE id = $1`, [jobId, step]);
 }
 
 async function failJob(jobId, err) {
@@ -402,6 +406,7 @@ async function runFullSync(session, { triggeredBy = 'manual' } = {}) {
   async function step(label, fn) {
     try {
       console.log(`[sync] ${label}…`);
+      await updateJobStep(jobId, label).catch(() => {});
       const n = await fn();
       total += (n || 0);
     } catch (err) {
@@ -487,17 +492,21 @@ async function runIncrementalSync(session, { triggeredBy = 'cron' } = {}) {
     }
 
     // Stock — always a full refresh (small dataset, needs to be current)
+    await updateJobStep(jobId, 'Syncing stock').catch(() => {});
     total += await syncStock(accountId, warehouseMap, clientMap, apiKey);
 
     // Orders — last 3 days only (catches new orders + despatch updates)
     const from = (() => { const d = new Date(); d.setDate(d.getDate() - 3); return d.toISOString().split('T')[0]; })();
+    await updateJobStep(jobId, 'Syncing recent orders').catch(() => {});
     total += await syncOrders(accountId, warehouseMap, clientMap, apiKey, from);
 
     // Accruals — current month running total
+    await updateJobStep(jobId, 'Syncing accruals').catch(() => {});
     total += await syncAccruals(accountId, clientMap, apiKey);
 
     // Goods-in — last 30 days (warehouse only)
     if (isWarehouse) {
+      await updateJobStep(jobId, 'Syncing goods-in').catch(() => {});
       total += await syncGoodsIn(accountId, warehouseMap, clientMap, apiKey);
     }
 

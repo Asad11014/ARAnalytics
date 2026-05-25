@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useSession } from '../context/SessionContext'
 import { useUI }      from '../context/UIContext'
@@ -11,28 +11,102 @@ const BADGE = {
 }
 
 function SyncButton() {
-  const [state, setState] = useState('idle')
+  const [phase, setPhase]     = useState('idle')   // idle | syncing | done | error
+  const [stepLabel, setStep]  = useState('')
+  const [records, setRecords] = useState(null)
+  const [elapsed, setElapsed] = useState(0)
+  const pollRef  = useRef(null)
+  const timerRef = useRef(null)
+  const startRef = useRef(null)
 
-  const trigger = useCallback(async () => {
-    setState('syncing')
-    try {
-      await fetch('/api/sync', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ full: true }) })
-      setState('done')
-      setTimeout(() => setState('idle'), 4000)
-    } catch {
-      setState('error')
-      setTimeout(() => setState('idle'), 4000)
-    }
+  const stopPolling = useCallback(() => {
+    clearInterval(pollRef.current)
+    clearInterval(timerRef.current)
+    pollRef.current  = null
+    timerRef.current = null
   }, [])
 
-  const label = state === 'syncing' ? '⟳ Syncing…' : state === 'done' ? '✓ Sync queued' : state === 'error' ? '✕ Sync failed' : '⟳ Sync Data'
-  const cls   = state === 'done'    ? 'border-success text-success'
-              : state === 'error'   ? 'border-danger text-danger'
-              : state === 'syncing' ? 'border-primary text-primary opacity-60'
+  const pollStatus = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/sync/status')
+      const data = await res.json()
+      const job  = data.lastJob
+      if (!job) return
+      if (job.status === 'running') {
+        setStep(job.current_step || 'Preparing…')
+      } else if (job.status === 'success') {
+        stopPolling()
+        setRecords(job.records_synced)
+        setPhase('done')
+        setTimeout(() => { setPhase('idle'); setRecords(null); setElapsed(0) }, 6000)
+      } else if (job.status === 'error') {
+        stopPolling()
+        setStep(job.error || 'Unknown error')
+        setPhase('error')
+        setTimeout(() => { setPhase('idle'); setStep(''); setElapsed(0) }, 6000)
+      }
+    } catch { /* network blip — keep polling */ }
+  }, [stopPolling])
+
+  const trigger = useCallback(async () => {
+    if (phase === 'syncing') return
+    setPhase('syncing')
+    setStep('Starting…')
+    setRecords(null)
+    setElapsed(0)
+    startRef.current = Date.now()
+
+    try {
+      await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ full: true }),
+      })
+    } catch {
+      setPhase('error')
+      setStep('Could not reach server')
+      setTimeout(() => { setPhase('idle'); setStep('') }, 4000)
+      return
+    }
+
+    // Elapsed timer — updates every second
+    timerRef.current = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
+    }, 1000)
+
+    // Poll status every 3 seconds
+    pollRef.current = setInterval(pollStatus, 3000)
+    pollStatus()
+  }, [phase, pollStatus])
+
+  useEffect(() => () => stopPolling(), [stopPolling])
+
+  const fmtElapsed = s => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
+
+  if (phase === 'syncing') {
+    return (
+      <div className="w-full border border-primary rounded font-mono text-[11px] py-1.5 px-2 text-primary bg-primary/5 space-y-1">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <span className="truncate">{stepLabel}</span>
+          <span className="ml-auto text-primary/60 flex-shrink-0">{fmtElapsed(elapsed)}</span>
+        </div>
+        <div className="w-full bg-primary/20 rounded-full h-0.5 overflow-hidden">
+          <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '60%' }} />
+        </div>
+      </div>
+    )
+  }
+
+  const label = phase === 'done'  ? `✓ Synced · ${records ?? 0} records`
+              : phase === 'error' ? '✕ Sync failed'
+              : '⟳ Sync Data'
+  const cls   = phase === 'done'  ? 'border-success text-success'
+              : phase === 'error' ? 'border-danger text-danger'
               : 'border-brand-border text-ink-muted hover:border-primary hover:text-primary'
 
   return (
-    <button onClick={trigger} disabled={state === 'syncing'}
+    <button onClick={trigger}
       className={`w-full border rounded font-mono text-[11px] py-1.5 transition-colors bg-transparent cursor-pointer ${cls}`}>
       {label}
     </button>
