@@ -8,8 +8,170 @@ import StatusBar     from '../components/StatusBar'
 import SortableTable from '../components/SortableTable'
 import Badge         from '../components/Badge'
 import MiniCalendar  from '../components/MiniCalendar'
+import MultiSelect   from '../components/MultiSelect'
 
 const FONTS = { sans: 'Syne, sans-serif', mono: '"DM Mono", monospace' }
+
+const DATE_PRESETS = [
+  { id: 'today',     label: 'Today',       days: 0  },
+  { id: 'yesterday', label: 'Yesterday',   days: -1 },
+  { id: '7d',        label: 'Last 7 days', days: 7  },
+  { id: '30d',       label: 'Last 30 days',days: 30 },
+  { id: '90d',       label: 'Last 90 days',days: 90 },
+]
+
+function presetDates(preset) {
+  const today = new Date()
+  const fmt   = d => d.toISOString().split('T')[0]
+  if (preset.days === 0)  return { dateFrom: fmt(today), dateTo: fmt(today) }
+  if (preset.days === -1) {
+    const y = new Date(today); y.setDate(today.getDate() - 1)
+    return { dateFrom: fmt(y), dateTo: fmt(y) }
+  }
+  const from = new Date(today); from.setDate(today.getDate() - preset.days)
+  return { dateFrom: fmt(from), dateTo: fmt(today) }
+}
+
+// Mintsoft order statuses from GET /api/Order/Statuses — shown until DB-populated list loads
+const MINTSOFT_STATUSES = [
+  'New', 'Printed', 'Cancelled', 'Despatched', 'Invoiced', 'Invoice Failed',
+  'Holding', 'Failed', 'On Back Order', 'Awaiting Confirmation', 'Awaiting Documentation',
+  'Awaiting Payment', 'Query Raised', 'Pack and Hold', 'Awaiting Picking',
+  'Picking Started', 'Picked', 'Fraud Risk', 'Picking Skipped', 'Packed',
+  'Awaiting Replen', 'Processing', 'Rebinned',
+]
+
+// ── Standalone Orders-by-Client panel (has its own date + status filters + fetch) ──
+function ClientVolumePanel({ warehouseId }) {
+  const [preset,           setPreset]   = useState('30d')
+  const [statuses,         setStatuses] = useState(new Set())
+  const [statusOptions,    setStatusOptions] = useState(MINTSOFT_STATUSES)
+  const [rows,             setRows]     = useState(null)
+  const [loading,          setLoading]  = useState(false)
+  const [view,             setView]     = useState('chart')
+
+  // Fetch real statuses from DB; fall back to hardcoded list if empty
+  useEffect(() => {
+    if (!warehouseId) return
+    fetch('/api/orders/statuses')
+      .then(r => r.json())
+      .then(d => { if (d.statuses?.length) setStatusOptions(d.statuses) })
+      .catch(() => {})
+  }, [warehouseId])
+
+  const load = useCallback(async (p, s) => {
+    if (!warehouseId) return
+    setLoading(true)
+    try {
+      const { dateFrom, dateTo } = presetDates(DATE_PRESETS.find(d => d.id === p))
+      const params = new URLSearchParams({ warehouseId, dateFrom, dateTo })
+      if (s.size > 0) params.set('statuses', [...s].join(','))
+      const res  = await fetch(`/api/orders/by-client?${params}`)
+      const data = await res.json()
+      setRows(data.rows || [])
+    } catch { /* ignore */ }
+    finally { setLoading(false) }
+  }, [warehouseId])
+
+  useEffect(() => { load(preset, statuses) }, [warehouseId])
+
+  const apply = (newPreset, newStatuses) => {
+    setPreset(newPreset)
+    setStatuses(newStatuses)
+    load(newPreset, newStatuses)
+  }
+
+  const top12       = (rows || []).slice(0, 12)
+  const total       = (rows || []).reduce((s, r) => s + r.order_count, 0)
+  const presetLabel = DATE_PRESETS.find(d => d.id === preset)?.label || ''
+  const statusNote  = statuses.size === 0 ? 'All statuses'
+                    : statuses.size === 1   ? [...statuses][0]
+                    : `${statuses.size} statuses`
+
+  const chartOpts = {
+    chart: { type: 'bar', background: 'transparent', toolbar: { show: false }, animations: { speed: 400 } },
+    plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '55%' } },
+    colors: ['#1f22ac'],
+    legend: { show: false },
+    xaxis: {
+      categories: top12.map(r => r.client_name),
+      axisBorder: { show: false }, axisTicks: { show: false },
+      labels: { style: { colors: '#6b7280', fontFamily: FONTS.mono, fontSize: '11px' } }
+    },
+    yaxis: { labels: { style: { colors: '#1a1c2e', fontFamily: FONTS.sans, fontSize: '12px', fontWeight: 600 } } },
+    grid: { borderColor: '#d8dbe8', strokeDashArray: 4, yaxis: { lines: { show: false } } },
+    dataLabels: { enabled: false },
+    tooltip: { theme: 'light', style: { fontFamily: FONTS.mono, fontSize: '12px' } },
+  }
+
+  return (
+    <div className="h-full flex flex-col min-h-0">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-2 mb-3 flex-shrink-0">
+        {/* Date presets */}
+        <div className="flex gap-1 flex-wrap">
+          {DATE_PRESETS.map(p => (
+            <button key={p.id} onClick={() => apply(p.id, statuses)}
+              className={`font-mono text-[10px] px-2 py-0.5 rounded border transition-colors ${
+                preset === p.id
+                  ? 'bg-primary text-white border-primary'
+                  : 'border-brand-border text-ink-muted hover:border-primary hover:text-primary bg-transparent'
+              }`}>
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {/* Status filter — always shown; uses DB statuses when available, fallback list otherwise */}
+        <MultiSelect
+          label="All statuses"
+          options={statusOptions.map(s => ({ value: s, label: s }))}
+          value={statuses}
+          onChange={s => apply(preset, s)}
+        />
+        {/* Chart / table toggle */}
+        <button onClick={() => setView(v => v === 'chart' ? 'table' : 'chart')}
+          className="ml-auto font-mono text-[10px] text-ink-muted hover:text-primary border border-brand-border hover:border-primary rounded px-2 py-1 transition-colors">
+          {view === 'chart' ? '⊞ Table' : '📊 Chart'}
+        </button>
+      </div>
+
+      {/* Summary */}
+      {rows !== null && !loading && (
+        <div className="font-mono text-[10px] text-ink-muted mb-2 flex-shrink-0">
+          {total.toLocaleString()} orders · {presetLabel} · {statusNote}
+        </div>
+      )}
+
+      {/* Content */}
+      {loading && (
+        <div className="flex-1 flex items-center justify-center">
+          <span className="font-mono text-xs text-ink-muted">Loading…</span>
+        </div>
+      )}
+
+      {!loading && rows !== null && view === 'chart' && (
+        top12.length > 0
+          ? <ReactApexChart type="bar"
+              series={[{ name: 'Orders', data: top12.map(r => r.order_count) }]}
+              options={chartOpts}
+              height={Math.min(Math.max(180, top12.length * 38), 360)} />
+          : <div className="flex-1 flex items-center justify-center text-ink-muted font-mono text-sm">No orders found</div>
+      )}
+
+      {!loading && rows !== null && view === 'table' && (
+        <SortableTable
+          columns={[
+            { key: 'client_name',  label: 'Client' },
+            { key: 'order_count',  label: 'Orders', align: 'right', render: r => <strong>{r.order_count.toLocaleString()}</strong> },
+          ]}
+          rows={rows}
+          emptyMessage="No orders found."
+          fillHeight
+        />
+      )}
+    </div>
+  )
+}
 
 function pct(a, b) {
   if (!b) return null
@@ -92,29 +254,6 @@ function Panel({ id, title, badge, viewMode, onToggleView, onDragStart, onDragEn
   )
 }
 
-// ── Client filter dropdown ────────────────────────────────────────────────────
-function ClientFilter({ clients, value, onChange }) {
-  if (!clients.length) return null
-  return (
-    <div className="flex items-center gap-2 mb-3">
-      <span className="font-mono text-[9px] text-ink-muted uppercase tracking-wide">Filter:</span>
-      <select
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="bg-brand-bg border border-brand-border rounded text-ink font-mono text-[11px] px-2 py-1 focus:outline-none focus:border-primary"
-      >
-        <option value="">All clients</option>
-        {clients.map(c => (
-          <option key={c.id} value={c.id}>{c.name}</option>
-        ))}
-      </select>
-      {value && (
-        <button onClick={() => onChange('')} className="font-mono text-[10px] text-ink-muted hover:text-danger transition-colors">✕ Clear</button>
-      )}
-    </div>
-  )
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 const INITIAL_ORDER = ['client-volume', 'mini-calendar', 'weekly-trend', 'client-health', 'stockout-alerts', 'monthly-revenue']
@@ -129,24 +268,43 @@ const INITIAL_VIEWS = {
 
 export default function WarehouseDashboard() {
   const { session, warehouseId, selectedClientId } = useSession()
-  const [data,       setData]       = useState(null)
-  const [cachedAt,   setCachedAt]   = useState(null)
-  const [status,     setStatus]     = useState({ msg: '', type: null })
-  const [loading,    setLoading]    = useState(false)
-  const [panelOrder, setPanelOrder] = useState(INITIAL_ORDER)
-  const [panelViews, setPanelViews] = useState(INITIAL_VIEWS)
-  const [dragSource, setDragSource] = useState(null)
-  const [dragOver,   setDragOver]   = useState(null)
-  const [filters,    setFilters]    = useState({})
+  const [data,           setData]         = useState(null)
+  const [cachedAt,       setCachedAt]     = useState(null)
+  const [status,         setStatus]       = useState({ msg: '', type: null })
+  const [loading,        setLoading]      = useState(false)
+  const [panelOrder,     setPanelOrder]   = useState(INITIAL_ORDER)
+  const [panelViews,     setPanelViews]   = useState(INITIAL_VIEWS)
+  const [dragSource,     setDragSource]   = useState(null)
+  const [dragOver,       setDragOver]     = useState(null)
+
+  // Top-level dashboard filters (warehouse-wide view only)
+  const [selectedClients, setSelectedClients] = useState(new Set())  // Set of Mintsoft client ID strings; empty = all
+  const [selectedStatuses, setSelectedStatuses] = useState(new Set()) // Set of status strings; empty = all
+  const [availableStatuses, setAvailableStatuses] = useState([])
+
+  // Fetch distinct order statuses once per warehouse
+  useEffect(() => {
+    if (!warehouseId || selectedClientId) return
+    fetch('/api/orders/statuses')
+      .then(r => r.json())
+      .then(d => setAvailableStatuses(d.statuses || []))
+      .catch(() => {})
+  }, [warehouseId, selectedClientId])
 
   useEffect(() => { if (warehouseId) load(false) }, [warehouseId, selectedClientId])
+
+  // Re-fetch when status filter changes (status filtering is server-side)
+  useEffect(() => {
+    if (warehouseId && !selectedClientId) load(false)
+  }, [selectedStatuses])
 
   async function load(refresh = false) {
     setLoading(true)
     if (refresh) setStatus({ msg: 'Refreshing…', type: 'loading' })
     else         setStatus({ msg: 'Loading dashboard…', type: 'loading' })
     try {
-      const url    = buildDashboardURL({ warehouseId, clientId: selectedClientId, refresh })
+      const statuses = [...selectedStatuses]
+      const url    = buildDashboardURL({ warehouseId, clientId: selectedClientId, statuses, refresh })
       const result = await fetchReportSSE(url, p => setStatus({ msg: p.message, type: 'loading' }))
       setData(result)
       setCachedAt(result.cachedAt || null)
@@ -174,54 +332,25 @@ export default function WarehouseDashboard() {
     handleDragEnd()
   }
 
-  const toggleView = (id)      => setPanelViews(v => ({ ...v, [id]: v[id] === 'table' ? 'chart' : 'table' }))
-  const setFilter  = (id, val) => setFilters(f => ({ ...f, [id]: val }))
+  const toggleView = (id) => setPanelViews(v => ({ ...v, [id]: v[id] === 'table' ? 'chart' : 'table' }))
 
   const k           = data?.kpis || {}
   const ordersDelta = pct(k.totalOrders30, k.prevOrders)
-  const clientList  = data?.clientBreakdown || []
+  const allClients  = data?.clientBreakdown || []
+
+  // Apply multi-client filter client-side (selectedClients is a Set of mintsoft ID strings)
+  const clientList  = selectedClients.size === 0
+    ? allClients
+    : allClients.filter(c => selectedClients.has(String(c.id)))
 
   // ── Panel content renderers ───────────────────────────────────────────────
 
-  function renderClientVolume(viewMode) {
-    const f        = filters['client-volume'] || ''
-    const filtered = f ? clientList.filter(c => c.id === f) : clientList
-    const top12    = filtered.slice(0, 12)
-
-    if (viewMode === 'chart') {
-      const opts = {
-        chart: { type: 'bar', background: 'transparent', toolbar: { show: false }, animations: { speed: 400 } },
-        plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '55%' } },
-        colors: ['#1f22ac'],
-        legend: { show: false },
-        xaxis: {
-          categories: top12.map(c => c.name),
-          axisBorder: { show: false }, axisTicks: { show: false },
-          labels: { style: { colors: '#6b7280', fontFamily: FONTS.mono, fontSize: '11px' } }
-        },
-        yaxis: { labels: { style: { colors: '#1a1c2e', fontFamily: FONTS.sans, fontSize: '12px', fontWeight: 600 } } },
-        grid: { borderColor: '#d8dbe8', strokeDashArray: 4, yaxis: { lines: { show: false } } },
-        dataLabels: { enabled: false },
-        tooltip: { theme: 'light', style: { fontFamily: FONTS.mono, fontSize: '12px' } },
-      }
-      return top12.length > 0
-        ? <ReactApexChart type="bar" series={[{ name: 'Orders', data: top12.map(c => c.orders30) }]} options={opts} height={Math.min(Math.max(180, top12.length * 38), 360)} />
-        : <EmptyState message="No order data" />
-    }
-
-    const cols = [
-      { key: 'name',     label: 'Client' },
-      { key: 'orders30', label: 'Orders (30d)', align: 'right', render: r => <strong>{r.orders30}</strong> },
-      { key: 'skuCount', label: 'SKUs',         align: 'right' },
-    ]
-    return <SortableTable columns={cols} rows={filtered} emptyMessage="No clients." fillHeight />
-  }
+  // ClientVolumePanel manages its own state — defined above WarehouseDashboard
 
   function renderMonthlyRevenue(viewMode) {
-    const rows     = data?.monthlyRevenue || []
-    const f        = filters['monthly-revenue'] || ''
-    const filtered = f ? rows.filter(r => r.id === f) : rows
-    const fmtGBP   = v => `£${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    const allRevenue = data?.monthlyRevenue || []
+    const filtered   = selectedClients.size === 0 ? allRevenue : allRevenue.filter(r => selectedClients.has(String(r.id)))
+    const fmtGBP     = v => `£${Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
     if (viewMode === 'chart') {
       if (!filtered.length) return <EmptyState message="No revenue data available. Run a sync to load invoice data." />
@@ -300,8 +429,7 @@ export default function WarehouseDashboard() {
   }
 
   function renderClientHealth(viewMode) {
-    const f        = filters['client-health'] || ''
-    const filtered = f ? clientList.filter(c => c.id === f) : clientList
+    const filtered = clientList
 
     if (viewMode === 'chart') {
       const opts = {
@@ -336,9 +464,8 @@ export default function WarehouseDashboard() {
   }
 
   function renderStockoutAlerts(viewMode) {
-    const alerts   = data?.stockAlerts || []
-    const f        = filters['stockout-alerts'] || ''
-    const filtered = f ? alerts.filter(a => a.clientId === f) : alerts
+    const allAlerts = data?.stockAlerts || []
+    const filtered  = selectedClients.size === 0 ? allAlerts : allAlerts.filter(a => selectedClients.has(String(a.clientId)))
 
     if (viewMode === 'chart') {
       const byClient = {}
@@ -376,45 +503,16 @@ export default function WarehouseDashboard() {
   // ── Panel definitions ─────────────────────────────────────────────────────
 
   const PANELS = {
-    'client-volume': {
-      title: '▸ Orders by Client — 30 Days',
-      badge: null,
-      hasClientFilter: true,
-      render: renderClientVolume,
-    },
-    'monthly-revenue': {
-      title: data?.revenueSource === 'confirmed' ? '▸ Revenue (Last Invoice)' : '▸ Monthly Revenue (MTD)',
-      badge: null,
-      hasClientFilter: true,
-      render: renderMonthlyRevenue,
-    },
-    'weekly-trend': {
-      title: '▸ Weekly Order Volume',
-      badge: null,
-      hasClientFilter: false,
-      render: renderWeeklyTrend,
-    },
-    'client-health': {
-      title: '▸ Client Health',
-      badge: null,
-      hasClientFilter: true,
-      render: renderClientHealth,
-    },
+    'client-volume':   { title: '▸ Orders by Client', noToggle: true, render: () => <ClientVolumePanel warehouseId={warehouseId} availableStatuses={availableStatuses} /> },
+    'monthly-revenue': { title: data?.revenueSource === 'confirmed' ? '▸ Revenue (Last Invoice)' : '▸ Monthly Revenue (MTD)', render: renderMonthlyRevenue },
+    'weekly-trend':    { title: '▸ Weekly Order Volume',                                                        render: renderWeeklyTrend    },
+    'client-health':   { title: '▸ Client Health',                                                             render: renderClientHealth   },
     'stockout-alerts': {
       title: '▸ Stockout Alerts',
-      badge: (data?.stockAlerts?.length || 0) > 0
-        ? <Badge label={`${data?.stockAlerts?.length} SKUs`} variant="danger" />
-        : null,
-      hasClientFilter: true,
+      badge: (data?.stockAlerts?.length || 0) > 0 ? <Badge label={`${data?.stockAlerts?.length} SKUs`} variant="danger" /> : null,
       render: renderStockoutAlerts,
     },
-    'mini-calendar': {
-      title: '▸ Calendar',
-      badge: null,
-      hasClientFilter: false,
-      noToggle: true,
-      render: () => <MiniCalendar />,
-    },
+    'mini-calendar':   { title: '▸ Calendar', noToggle: true, render: () => <MiniCalendar /> },
   }
 
   // ── No warehouse selected ─────────────────────────────────────────────────
@@ -582,13 +680,41 @@ export default function WarehouseDashboard() {
             accent={k.totalAlerts > 0 ? 'danger' : 'success'} />
         </div>
 
+        {/* Top-level filters — client multi-select + status */}
+        {data && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[9px] text-ink-muted uppercase tracking-widest">Filter:</span>
+            <MultiSelect
+              label="All clients"
+              options={allClients.map(c => ({ value: String(c.id), label: c.name }))}
+              value={selectedClients}
+              onChange={setSelectedClients}
+            />
+            {availableStatuses.length > 0 && (
+              <MultiSelect
+                label="All statuses"
+                options={availableStatuses.map(s => ({ value: s, label: s }))}
+                value={selectedStatuses}
+                onChange={setSelectedStatuses}
+              />
+            )}
+            {(selectedClients.size > 0 || selectedStatuses.size > 0) && (
+              <button
+                onClick={() => { setSelectedClients(new Set()); setSelectedStatuses(new Set()) }}
+                className="font-mono text-[10px] text-ink-muted hover:text-danger transition-colors"
+              >
+                ✕ Clear all
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Draggable panels grid */}
         {data && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {panelOrder.map(id => {
               const def      = PANELS[id]
               const viewMode = panelViews[id]
-              const filter   = filters[id] || ''
               return (
                 <Panel
                   key={id}
@@ -605,13 +731,6 @@ export default function WarehouseDashboard() {
                   onDrop={handleDrop}
                   isDragOver={dragOver === id}
                 >
-                  {def.hasClientFilter && (
-                    <ClientFilter
-                      clients={clientList.map(c => ({ id: c.id, name: c.name }))}
-                      value={filter}
-                      onChange={val => setFilter(id, val)}
-                    />
-                  )}
                   {def.render(viewMode)}
                 </Panel>
               )

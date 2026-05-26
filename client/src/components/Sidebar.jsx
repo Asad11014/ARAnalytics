@@ -11,13 +11,22 @@ const BADGE = {
 }
 
 function SyncButton() {
-  const [phase, setPhase]     = useState('idle')   // idle | syncing | done | error
-  const [stepLabel, setStep]  = useState('')
-  const [records, setRecords] = useState(null)
-  const [elapsed, setElapsed] = useState(0)
+  const [phase,       setPhase]    = useState('idle')  // idle | syncing | done | partial | error
+  const [stepLabel,   setStep]     = useState('')
+  const [records,     setRecords]  = useState(null)
+  const [elapsed,     setElapsed]  = useState(0)
+  const [lastSyncAt,  setLastSync] = useState(undefined) // undefined = loading, null = never, string = date
   const pollRef  = useRef(null)
   const timerRef = useRef(null)
   const startRef = useRef(null)
+
+  // Check sync history on mount so we know whether to run full or incremental
+  useEffect(() => {
+    fetch('/api/sync/status')
+      .then(r => r.json())
+      .then(d => setLastSync(d.lastSyncAt ?? null))
+      .catch(() => setLastSync(null))
+  }, [])
 
   const stopPolling = useCallback(() => {
     clearInterval(pollRef.current)
@@ -36,22 +45,29 @@ function SyncButton() {
         setStep(job.current_step || 'Preparing…')
       } else if (job.status === 'success') {
         stopPolling()
+        setLastSync(data.lastSyncAt)
         setRecords(job.records_synced)
         setPhase('done')
-        setTimeout(() => { setPhase('idle'); setRecords(null); setElapsed(0) }, 6000)
+        setTimeout(() => { setPhase('idle'); setRecords(null); setElapsed(0) }, 8000)
+      } else if (job.status === 'partial') {
+        stopPolling()
+        setLastSync(data.lastSyncAt)
+        setRecords(job.records_synced)
+        setPhase('partial')
+        setTimeout(() => { setPhase('idle'); setRecords(null); setElapsed(0) }, 8000)
       } else if (job.status === 'error') {
         stopPolling()
         setStep(job.error || 'Unknown error')
         setPhase('error')
-        setTimeout(() => { setPhase('idle'); setStep(''); setElapsed(0) }, 6000)
+        setTimeout(() => { setPhase('idle'); setStep(''); setElapsed(0) }, 8000)
       }
     } catch { /* network blip — keep polling */ }
   }, [stopPolling])
 
-  const trigger = useCallback(async () => {
+  const firSync = useCallback(async (full) => {
     if (phase === 'syncing') return
     setPhase('syncing')
-    setStep('Starting…')
+    setStep(full ? 'Starting full sync…' : 'Starting…')
     setRecords(null)
     setElapsed(0)
     startRef.current = Date.now()
@@ -60,7 +76,7 @@ function SyncButton() {
       await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ full: true }),
+        body: JSON.stringify({ full }),
       })
     } catch {
       setPhase('error')
@@ -69,12 +85,9 @@ function SyncButton() {
       return
     }
 
-    // Elapsed timer — updates every second
     timerRef.current = setInterval(() => {
       setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
     }, 1000)
-
-    // Poll status every 3 seconds
     pollRef.current = setInterval(pollStatus, 3000)
     pollStatus()
   }, [phase, pollStatus])
@@ -82,6 +95,9 @@ function SyncButton() {
   useEffect(() => () => stopPolling(), [stopPolling])
 
   const fmtElapsed = s => s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${s % 60}s`
+
+  const everSynced = !!lastSyncAt  // false on first use → full sync
+  const isLoading  = lastSyncAt === undefined
 
   if (phase === 'syncing') {
     return (
@@ -98,18 +114,36 @@ function SyncButton() {
     )
   }
 
-  const label = phase === 'done'  ? `✓ Synced · ${records ?? 0} records`
-              : phase === 'error' ? '✕ Sync failed'
-              : '⟳ Sync Data'
-  const cls   = phase === 'done'  ? 'border-success text-success'
-              : phase === 'error' ? 'border-danger text-danger'
+  const label = phase === 'done'    ? `✓ Synced · ${records ?? 0} records`
+              : phase === 'partial' ? `⚠ Synced · ${records ?? 0} records`
+              : phase === 'error'   ? '✕ Sync failed'
+              : everSynced          ? '⟳ Sync Data'
+              : isLoading           ? '⟳ Sync Data'
+              : '⟳ Initial Sync'
+  const cls   = phase === 'done'    ? 'border-success text-success'
+              : phase === 'partial' ? 'border-warning text-warning'
+              : phase === 'error'   ? 'border-danger text-danger'
               : 'border-brand-border text-ink-muted hover:border-primary hover:text-primary'
 
   return (
-    <button onClick={trigger}
-      className={`w-full border rounded font-mono text-[11px] py-1.5 transition-colors bg-transparent cursor-pointer ${cls}`}>
-      {label}
-    </button>
+    <div className="space-y-1">
+      <button
+        onClick={() => firSync(!everSynced)}
+        disabled={isLoading}
+        className={`w-full border rounded font-mono text-[11px] py-1.5 transition-colors bg-transparent cursor-pointer disabled:opacity-40 ${cls}`}
+      >
+        {label}
+      </button>
+      {/* Full resync option — only shown after initial sync has been done */}
+      {everSynced && phase === 'idle' && (
+        <button
+          onClick={() => firSync(true)}
+          className="w-full font-mono text-[10px] text-ink-dim hover:text-ink-muted transition-colors text-center py-0.5"
+        >
+          ↺ Full resync
+        </button>
+      )}
+    </div>
   )
 }
 

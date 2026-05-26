@@ -1,7 +1,7 @@
 // Order Fulfillment Performance
 // Measures how quickly orders are fulfilled and how consistently SLAs are met.
 
-const { resolveIds, getOrderHeaders } = require('../db-base');
+const { resolveIds, resolveClientDbIds, getOrderHeaders } = require('../db-base');
 const { startSSE, parseReportParams } = require('../base');
 
 const meta = {
@@ -16,13 +16,14 @@ const meta = {
 };
 
 async function run(req, res, url, session) {
-  const { warehouseId: msWarehouseId, clientId: msClientId, dateFrom, dateTo } = parseReportParams(url, session);
+  const { warehouseId: msWarehouseId, clientId: msClientId, clientIds: msClientIds, statuses, dateFrom, dateTo } = parseReportParams(url, session);
   const slaDays = parseInt(url.searchParams.get('slaDays') || '2');
   const send = startSSE(res);
 
   try {
-    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientIds.length ? null : msClientId);
     if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
+    const clientDbIds = msClientIds.length ? await resolveClientDbIds(accountId, msClientIds) : null;
 
     const clientMap = {};
     for (const c of (session.clients || [])) {
@@ -32,7 +33,7 @@ async function run(req, res, url, session) {
     }
 
     send({ type: 'progress', message: 'Fetching orders…' });
-    const orders = await getOrderHeaders(accountId, warehouseId, clientId, dateFrom, dateTo);
+    const orders = await getOrderHeaders(accountId, warehouseId, clientId, dateFrom, dateTo, { clientIds: clientDbIds, statuses });
 
     send({ type: 'progress', message: 'Calculating fulfillment metrics…' });
     const { rows, kpis } = calculate(orders, slaDays, clientMap, msClientId);

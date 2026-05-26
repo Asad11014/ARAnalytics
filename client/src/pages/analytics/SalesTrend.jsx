@@ -3,13 +3,14 @@ import ReactApexChart from 'react-apexcharts'
 import { useSession }     from '../../context/SessionContext'
 import { buildReportURL, exportCSV } from '../../lib/api'
 import { fetchReportSSE } from '../../lib/sse'
+import useReportFilters   from '../../lib/useReportFilters'
 import StatusBar     from '../../components/StatusBar'
 import SortableTable from '../../components/SortableTable'
 import StatCard      from '../../components/StatCard'
-import Badge from '../../components/Badge'
+import Badge         from '../../components/Badge'
+import MultiSelect   from '../../components/MultiSelect'
 
 const CHART_FONTS = { mono: '"DM Mono", monospace', sans: 'Syne, sans-serif' }
-const TREND_COLOR = { growing: '#16a34a', declining: '#e03355', stable: '#6b7280', new: '#1f22ac', stopped: '#9ca3af' }
 
 export default function SalesTrend() {
   const { warehouseId, selectedClientId, session } = useSession()
@@ -18,13 +19,25 @@ export default function SalesTrend() {
   const [status,  setStatus]  = useState({ msg: '', type: null })
   const [loading, setLoading] = useState(false)
 
-  const clientId = session?.isWarehouse ? selectedClientId : session?.clientId
+  const {
+    selectedClients, setSelectedClients,
+    selectedStatuses, setSelectedStatuses,
+    availableStatuses, clientOptions, clientIds, statuses,
+  } = useReportFilters(session, warehouseId)
+
+  const singleClientId = session?.isWarehouse ? selectedClientId : session?.clientId
 
   async function run() {
     if (!warehouseId) { setStatus({ msg: 'Select a warehouse first.', type: 'error' }); return }
     setLoading(true); setResult(null)
     try {
-      const url = buildReportURL('sales-trend', { warehouseId, clientId, days })
+      const url = buildReportURL('sales-trend', {
+        warehouseId,
+        clientId:  singleClientId && !clientIds.length ? singleClientId : undefined,
+        clientIds: singleClientId ? [] : clientIds,
+        statuses,
+        days,
+      })
       const res = await fetchReportSSE(url, p => setStatus({ msg: p.message, type: 'loading' }))
       setResult(res)
       setStatus({ msg: `${res.meta?.totalSkus || 0} SKUs analysed`, type: 'success' })
@@ -37,7 +50,6 @@ export default function SalesTrend() {
 
   const m = result?.meta || {}
 
-  // Donut chart — trend distribution
   const trendCounts = result ? [m.growing || 0, result.rows?.filter(r => r.trend === 'stable').length || 0,
     m.declining || 0, m.new || 0, result.rows?.filter(r => r.trend === 'stopped').length || 0] : []
   const donutOptions = {
@@ -93,6 +105,18 @@ export default function SalesTrend() {
               <input type="number" min={1} value={days} onChange={e => setDays(Number(e.target.value))}
                 className="bg-brand-bg border border-brand-border rounded px-3 py-2 font-mono text-sm text-ink w-32 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10" />
             </div>
+            {session?.isWarehouse && !singleClientId && clientOptions.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-[10px] text-ink-muted uppercase tracking-wide">Clients</label>
+                <MultiSelect label="All clients" options={clientOptions} value={selectedClients} onChange={setSelectedClients} />
+              </div>
+            )}
+            {availableStatuses.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-[10px] text-ink-muted uppercase tracking-wide">Order Status</label>
+                <MultiSelect label="All statuses" options={availableStatuses.map(s => ({ value: s, label: s }))} value={selectedStatuses} onChange={setSelectedStatuses} />
+              </div>
+            )}
             <button onClick={run} disabled={loading}
               className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-sans font-bold text-sm rounded px-5 py-2 h-9 transition-colors disabled:opacity-50">
               {loading ? '⟳ Running…' : '▶ Run Report'}
@@ -112,7 +136,7 @@ export default function SalesTrend() {
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
               <div className="xl:col-span-2 flex gap-3 flex-wrap content-start">
                 <StatCard label="Total SKUs"  value={m.totalSkus} />
-                <StatCard label="Growing"     value={m.growing}  accent="success" />
+                <StatCard label="Growing"     value={m.growing}   accent="success" />
                 <StatCard label="Declining"   value={m.declining} accent="danger" />
                 <StatCard label="New SKUs"    value={m.new}       accent="primary" />
               </div>

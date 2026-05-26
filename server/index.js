@@ -109,6 +109,56 @@ const server = http.createServer(async (req, res) => {
       return res.json(200, { lastSyncAt: account?.last_sync_at ?? null, lastJob: lastJob ?? null });
     }
 
+    // ── Orders by client (for dashboard panel with date + status filters) ──────
+    if (pathname === '/api/orders/by-client' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      const accRow = await queryOne(`SELECT id FROM accounts WHERE username = $1`, [session.username]);
+      if (!accRow) return res.json(200, { rows: [] });
+
+      const msWarehouseId = url.searchParams.get('warehouseId');
+      const dateFrom      = url.searchParams.get('dateFrom');
+      const dateTo        = url.searchParams.get('dateTo');
+      const statusParam   = url.searchParams.get('statuses') || '';
+      const statuses      = statusParam.split(',').filter(Boolean);
+
+      let sql = `
+        SELECT c.mintsoft_id AS client_id, c.name AS client_name, COUNT(*)::int AS order_count
+        FROM orders o
+        JOIN clients c ON o.client_id = c.id
+        WHERE o.account_id = $1`;
+      const p = [accRow.id];
+
+      if (msWarehouseId) {
+        const wh = await queryOne(
+          `SELECT id FROM warehouses WHERE account_id = $1 AND mintsoft_id = $2`,
+          [accRow.id, parseInt(msWarehouseId)]
+        );
+        if (wh) sql += ` AND o.warehouse_id = $${p.push(wh.id)}`;
+      }
+      if (dateFrom) sql += ` AND o.order_date >= $${p.push(dateFrom)}`;
+      if (dateTo)   sql += ` AND o.order_date <= $${p.push(dateTo)}`;
+      if (statuses.length) sql += ` AND o.status = ANY($${p.push(statuses)})`;
+
+      sql += ` GROUP BY c.mintsoft_id, c.name ORDER BY order_count DESC`;
+      const rows = await query(sql, p);
+      return res.json(200, { rows });
+    }
+
+    // ── Order statuses — DB values for this account, merged with full Mintsoft list ──
+    if (pathname === '/api/orders/statuses' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      const accRow = await queryOne(`SELECT id FROM accounts WHERE username = $1`, [session.username]);
+      if (!accRow) return res.json(200, { statuses: [] });
+      // Statuses that exist in this account's order data
+      const rows = await query(
+        `SELECT DISTINCT status FROM orders WHERE account_id = $1 AND status IS NOT NULL AND status != '[object Object]' ORDER BY status`,
+        [accRow.id]
+      );
+      return res.json(200, { statuses: rows.map(r => r.status) });
+    }
+
     // ── Calendar ASN sync (warehouse only, fast) ──────────────────────────────
     if (pathname === '/api/calendar/sync-asn' && req.method === 'POST') {
       const session = auth.requireSession(req, res);

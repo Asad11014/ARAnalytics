@@ -1,7 +1,7 @@
 // Sales Trend Report
 // Compares sales velocity in two periods to identify growing, declining, or new SKUs.
 
-const { resolveIds, getOrders, getSkuNames } = require('../db-base');
+const { resolveIds, resolveClientDbIds, getOrders, getSkuNames } = require('../db-base');
 const { startSSE, parseReportParams, fmt, daysAgo } = require('../base');
 
 const meta = {
@@ -14,13 +14,14 @@ const meta = {
 };
 
 async function run(req, res, url, session) {
-  const { warehouseId: msWarehouseId, clientId: msClientId } = parseReportParams(url, session);
+  const { warehouseId: msWarehouseId, clientId: msClientId, clientIds: msClientIds, statuses } = parseReportParams(url, session);
   const days = parseInt(url.searchParams.get('days') || '30');
   const send = startSSE(res);
 
   try {
-    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
+    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientIds.length ? null : msClientId);
     if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
+    const clientDbIds = msClientIds.length ? await resolveClientDbIds(accountId, msClientIds) : null;
 
     const now       = new Date();
     const recentFrom = fmt(daysAgo(days));
@@ -29,10 +30,10 @@ async function run(req, res, url, session) {
     const toDate     = fmt(now);
 
     send({ type: 'progress', message: `Fetching recent orders (last ${days} days)…` });
-    const recentOrders = await getOrders(accountId, warehouseId, clientId, recentFrom, toDate);
+    const recentOrders = await getOrders(accountId, warehouseId, clientId, recentFrom, toDate, { clientIds: clientDbIds, statuses });
 
     send({ type: 'progress', message: `Fetching prior orders (${days} days before that)…` });
-    const priorOrders = await getOrders(accountId, warehouseId, clientId, priorFrom, priorTo);
+    const priorOrders = await getOrders(accountId, warehouseId, clientId, priorFrom, priorTo, { clientIds: clientDbIds, statuses });
 
     send({ type: 'progress', message: 'Fetching product names…' });
     const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);

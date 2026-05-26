@@ -153,8 +153,10 @@ async function ensureCoreSchema() {
   await query(`ALTER TABLE sync_jobs ADD COLUMN IF NOT EXISTS current_step TEXT`);
 
   // ── Indexes (IF NOT EXISTS requires Postgres 9.5+, safe to re-run) ────────────
-  await query(`CREATE INDEX IF NOT EXISTS orders_account_wh_date_idx   ON orders      (account_id, warehouse_id, despatch_date DESC)`);
-  await query(`CREATE INDEX IF NOT EXISTS orders_account_client_date_idx ON orders    (account_id, client_id,    despatch_date DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS orders_account_wh_date_idx     ON orders (account_id, warehouse_id, despatch_date DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS orders_account_client_date_idx  ON orders (account_id, client_id,    despatch_date DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS orders_account_wh_odate_idx     ON orders (account_id, warehouse_id, order_date DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS orders_account_client_odate_idx ON orders (account_id, client_id,    order_date DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS order_items_order_idx         ON order_items (order_id)`);
   await query(`CREATE INDEX IF NOT EXISTS order_items_sku_idx           ON order_items (sku)`);
   await query(`CREATE INDEX IF NOT EXISTS stock_levels_account_idx      ON stock_levels(account_id, warehouse_id, client_id)`);

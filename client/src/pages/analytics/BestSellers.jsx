@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useSession }     from '../../context/SessionContext'
 import { buildReportURL, exportCSV } from '../../lib/api'
 import { fetchReportSSE } from '../../lib/sse'
+import useReportFilters   from '../../lib/useReportFilters'
 import StatusBar     from '../../components/StatusBar'
 import SortableTable from '../../components/SortableTable'
 import StatCard      from '../../components/StatCard'
-import Badge from '../../components/Badge'
+import MultiSelect   from '../../components/MultiSelect'
 
 export default function BestSellers() {
   const { warehouseId, selectedClientId, session } = useSession()
@@ -14,15 +15,29 @@ export default function BestSellers() {
   const [result,  setResult]  = useState(null)
   const [status,  setStatus]  = useState({ msg: '', type: null })
   const [loading, setLoading] = useState(false)
-  const [view,    setView]    = useState('top') // 'top' | 'worst'
+  const [view,    setView]    = useState('top')
 
-  const clientId = session?.isWarehouse ? selectedClientId : session?.clientId
+  const {
+    selectedClients, setSelectedClients,
+    selectedStatuses, setSelectedStatuses,
+    availableStatuses, clientOptions, clientIds, statuses,
+  } = useReportFilters(session, warehouseId)
+
+  // If sidebar has a single client selected, ignore multi-select and use that
+  const singleClientId = session?.isWarehouse ? selectedClientId : session?.clientId
 
   async function run() {
     if (!warehouseId) { setStatus({ msg: 'Select a warehouse first.', type: 'error' }); return }
     setLoading(true); setResult(null)
     try {
-      const url = buildReportURL('best-sellers', { warehouseId, clientId, days, limit })
+      const url = buildReportURL('best-sellers', {
+        warehouseId,
+        clientId:  singleClientId && !clientIds.length ? singleClientId : undefined,
+        clientIds: singleClientId ? [] : clientIds,
+        statuses,
+        days,
+        limit,
+      })
       const res = await fetchReportSSE(url, p => setStatus({ msg: p.message, type: 'loading' }))
       setResult(res)
       setStatus({ msg: `${res.meta?.totalSkus || 0} SKUs across ${res.meta?.totalOrders || 0} orders`, type: 'success' })
@@ -42,9 +57,7 @@ export default function BestSellers() {
     { key: 'activeDays', label: 'Active Days', align: 'right' },
   ]
 
-  const rows = view === 'top'
-    ? (result?.topSellers  || [])
-    : (result?.worstSellers || [])
+  const rows = view === 'top' ? (result?.topSellers || []) : (result?.worstSellers || [])
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -75,6 +88,19 @@ export default function BestSellers() {
               <input type="number" min={1} value={limit} onChange={e => setLimit(Number(e.target.value))}
                 className="bg-brand-bg border border-brand-border rounded px-3 py-2 font-mono text-sm text-ink w-28 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10" />
             </div>
+            {/* Multi-client filter — only for warehouse users without a sidebar client selected */}
+            {session?.isWarehouse && !singleClientId && clientOptions.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-[10px] text-ink-muted uppercase tracking-wide">Clients</label>
+                <MultiSelect label="All clients" options={clientOptions} value={selectedClients} onChange={setSelectedClients} />
+              </div>
+            )}
+            {availableStatuses.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <label className="font-mono text-[10px] text-ink-muted uppercase tracking-wide">Order Status</label>
+                <MultiSelect label="All statuses" options={availableStatuses.map(s => ({ value: s, label: s }))} value={selectedStatuses} onChange={setSelectedStatuses} />
+              </div>
+            )}
             <button onClick={run} disabled={loading}
               className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-sans font-bold text-sm rounded px-5 py-2 h-9 transition-colors disabled:opacity-50">
               {loading ? '⟳ Running…' : '▶ Run Report'}
@@ -91,7 +117,6 @@ export default function BestSellers() {
               <StatCard label="Total Orders" value={result.meta?.totalOrders?.toLocaleString()} accent="primary" />
             </div>
 
-            {/* Toggle */}
             <div className="flex gap-2">
               {[{ id: 'top', label: '🏆 Top Sellers' }, { id: 'worst', label: '🔻 Worst Sellers' }].map(t => (
                 <button key={t.id} onClick={() => setView(t.id)}

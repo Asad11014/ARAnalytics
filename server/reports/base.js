@@ -41,7 +41,7 @@ async function fetchOrders(apiKey, warehouseId, clientId, fromDate, toDate, onPr
 
   // Paginate through order headers
   while (true) {
-    const path = `/api/Order/List?WarehouseId=${encodeURIComponent(warehouseId)}&SinceDespatchDate=${fromDate}T00:00:00&ToDate=${toDate}T23:59:59&Limit=${PAGE_LIMIT}&PageNo=${pageNo}${clientParam}`;
+    const path = `/api/Order/List?WarehouseId=${encodeURIComponent(warehouseId)}&SinceOrderDate=${fromDate}T00:00:00&ToDate=${toDate}T23:59:59&Limit=${PAGE_LIMIT}&PageNo=${pageNo}${clientParam}`;
     const result = await mintsoftGet(path, apiKey);
     if (result.status !== 200) throw new Error(`Orders API error: ${result.status} on page ${pageNo}`);
 
@@ -118,6 +118,10 @@ function parseReportParams(url, session) {
   return {
     warehouseId: url.searchParams.get('warehouseId'),
     clientId:    url.searchParams.get('clientId') || session.clientId,
+    // Multi-client: comma-separated Mintsoft client IDs; takes priority over single clientId
+    clientIds:   (url.searchParams.get('clientIds') || '').split(',').filter(Boolean),
+    // Status filter: comma-separated status strings
+    statuses:    (url.searchParams.get('statuses')  || '').split(',').filter(Boolean),
     dateFrom:    url.searchParams.get('dateFrom'),
     dateTo:      url.searchParams.get('dateTo'),
     days:        parseInt(url.searchParams.get('days') || '30'),
@@ -302,9 +306,10 @@ async function fetchOrderHeaders(apiKey, warehouseId, clientId, fromDate, toDate
   const allOrders = [];
   let pageNo = 1;
   const clientParam = clientId ? `&ClientId=${encodeURIComponent(clientId)}` : '';
+  const to = toDate || new Date().toISOString().split('T')[0];
 
   while (true) {
-    const path = `/api/Order/List?WarehouseId=${encodeURIComponent(warehouseId)}&SinceDespatchDate=${fromDate}T00:00:00&ToDate=${toDate}T23:59:59&Limit=${PAGE_LIMIT}&PageNo=${pageNo}${clientParam}`;
+    const path = `/api/Order/List?WarehouseId=${encodeURIComponent(warehouseId)}&SinceOrderDate=${fromDate}T00:00:00&ToDate=${to}T23:59:59&Limit=${PAGE_LIMIT}&PageNo=${pageNo}${clientParam}`;
     const result = await mintsoftGet(path, apiKey);
     if (result.status !== 200) throw new Error(`Orders API error: ${result.status} on page ${pageNo}`);
 

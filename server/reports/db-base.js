@@ -82,6 +82,16 @@ async function resolveIds(session, msWarehouseId, msClientId) {
   return { accountId, warehouseId, clientId };
 }
 
+// Convert an array of Mintsoft client IDs (strings) to DB surrogate IDs for this account.
+async function resolveClientDbIds(accountId, msClientIds) {
+  if (!msClientIds?.length) return [];
+  const rows = await query(
+    `SELECT id FROM clients WHERE account_id = $1 AND mintsoft_id = ANY($2)`,
+    [accountId, msClientIds.map(Number)]
+  );
+  return rows.map(r => r.id);
+}
+
 // For client users whose clientId may be null in session — find the single client record for their account.
 // Also checks warehouse accounts that may hold their data.
 async function getClientIdForAccount(accountId) {
@@ -111,12 +121,16 @@ async function getStock(accountId, warehouseId, clientId) {
 // ── Orders ────────────────────────────────────────────────────────────────────
 
 // Returns orders with nested items:
-// [{ OrderId, OrderDate, DespatchDate, ClientId(mintsoft), OrderItems: [{ SKU, Quantity }] }]
-async function getOrders(accountId, warehouseId, clientId, fromDate, toDate) {
+// [{ OrderId, OrderDate, DespatchDate, ClientId(mintsoft), Status, OrderItems: [{ SKU, Quantity }] }]
+// opts.clientIds: number[] — DB surrogate client IDs (AND IN (...)); null/[] = all clients
+// opts.statuses:  string[] — order status values to include; null/[] = all statuses
+async function getOrders(accountId, warehouseId, clientId, fromDate, toDate, opts = {}) {
+  const { clientIds, statuses } = opts;
   let sql = `
     SELECT o.mintsoft_id AS "OrderId",
            o.order_date::text    AS "OrderDate",
            o.despatch_date::text AS "DespatchDate",
+           o.status              AS "Status",
            c.mintsoft_id AS "ClientId",
            COALESCE(json_agg(json_build_object('SKU', oi.sku, 'Quantity', oi.quantity))
              FILTER (WHERE oi.id IS NOT NULL), '[]') AS "OrderItems"
@@ -125,30 +139,37 @@ async function getOrders(accountId, warehouseId, clientId, fromDate, toDate) {
     LEFT JOIN order_items oi ON oi.order_id = o.id
     WHERE o.account_id = $1`;
   const p = [accountId];
-  if (warehouseId) sql += ` AND o.warehouse_id = $${p.push(warehouseId)}`;
-  if (clientId)    sql += ` AND o.client_id = $${p.push(clientId)}`;
-  if (fromDate)    sql += ` AND o.despatch_date >= $${p.push(fromDate)}`;
-  if (toDate)      sql += ` AND o.despatch_date <= $${p.push(toDate)}`;
+  if (warehouseId)               sql += ` AND o.warehouse_id = $${p.push(warehouseId)}`;
+  if (clientId)                  sql += ` AND o.client_id = $${p.push(clientId)}`;
+  if (clientIds?.length)         sql += ` AND o.client_id = ANY($${p.push(clientIds)})`;
+  if (fromDate)                  sql += ` AND o.despatch_date >= $${p.push(fromDate)}`;
+  if (toDate)                    sql += ` AND o.despatch_date <= $${p.push(toDate)}`;
+  if (statuses?.length)          sql += ` AND o.status = ANY($${p.push(statuses)})`;
   sql += ` GROUP BY o.id, c.mintsoft_id ORDER BY o.despatch_date DESC NULLS LAST`;
   return query(sql, p);
 }
 
 // Returns order headers only (no items) — fast path for counts and date aggregations.
-// [{ OrderId, OrderDate, DespatchDate, ClientId(mintsoft) }]
-async function getOrderHeaders(accountId, warehouseId, clientId, fromDate, toDate) {
+// [{ OrderId, OrderDate, DespatchDate, ClientId(mintsoft), Status }]
+// opts.clientIds / opts.statuses same as getOrders above.
+async function getOrderHeaders(accountId, warehouseId, clientId, fromDate, toDate, opts = {}) {
+  const { clientIds, statuses } = opts;
   let sql = `
     SELECT o.mintsoft_id AS "OrderId",
            o.order_date::text    AS "OrderDate",
            o.despatch_date::text AS "DespatchDate",
+           o.status              AS "Status",
            c.mintsoft_id AS "ClientId"
     FROM orders o
     LEFT JOIN clients c ON o.client_id = c.id
     WHERE o.account_id = $1`;
   const p = [accountId];
-  if (warehouseId) sql += ` AND o.warehouse_id = $${p.push(warehouseId)}`;
-  if (clientId)    sql += ` AND o.client_id = $${p.push(clientId)}`;
-  if (fromDate)    sql += ` AND o.despatch_date >= $${p.push(fromDate)}`;
-  if (toDate)      sql += ` AND o.despatch_date <= $${p.push(toDate)}`;
+  if (warehouseId)               sql += ` AND o.warehouse_id = $${p.push(warehouseId)}`;
+  if (clientId)                  sql += ` AND o.client_id = $${p.push(clientId)}`;
+  if (clientIds?.length)         sql += ` AND o.client_id = ANY($${p.push(clientIds)})`;
+  if (fromDate)                  sql += ` AND o.despatch_date >= $${p.push(fromDate)}`;
+  if (toDate)                    sql += ` AND o.despatch_date <= $${p.push(toDate)}`;
+  if (statuses?.length)          sql += ` AND o.status = ANY($${p.push(statuses)})`;
   sql += ` ORDER BY o.despatch_date DESC NULLS LAST`;
   return query(sql, p);
 }
@@ -357,6 +378,7 @@ async function getCurrentAccrualsMap(accountId) {
 
 module.exports = {
   resolveIds,
+  resolveClientDbIds,
   getClientIdForAccount,
   getStock,
   getOrders,

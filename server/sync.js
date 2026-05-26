@@ -3,6 +3,39 @@
 // All writes use ON CONFLICT DO UPDATE — safe to re-run any time.
 
 const { query, queryOne } = require('./db');
+
+// Mintsoft returns OrderStatusId (integer) — source of truth: GET /api/Order/Statuses
+const ORDER_STATUS_MAP = {
+  1:  'New',
+  2:  'Printed',
+  3:  'Cancelled',
+  4:  'Despatched',
+  5:  'Invoiced',
+  6:  'Invoice Failed',
+  7:  'Holding',
+  8:  'Failed',
+  9:  'On Back Order',
+  10: 'Awaiting Confirmation',
+  11: 'Awaiting Documentation',
+  12: 'Awaiting Payment',
+  13: 'Query Raised',
+  14: 'Pack and Hold',
+  15: 'Awaiting Picking',
+  16: 'Picking Started',
+  17: 'Picked',
+  18: 'Fraud Risk',
+  19: 'Picking Skipped',
+  20: 'Packed',
+  21: 'Awaiting Replen',
+  22: 'Processing',
+  23: 'Rebinned',
+};
+
+function resolveOrderStatus(order) {
+  const id = order.OrderStatusId;
+  if (id == null) return null;
+  return ORDER_STATUS_MAP[id] || `Status ${id}`;
+}
 const {
   fetchStock,
   fetchOrders,
@@ -55,8 +88,16 @@ async function updateJobStep(jobId, step) {
 
 async function failJob(jobId, err) {
   await query(
-    `UPDATE sync_jobs SET status = 'error', error = $2, completed_at = NOW() WHERE id = $1`,
+    `UPDATE sync_jobs SET status = 'error', error = $2, current_step = NULL, completed_at = NOW() WHERE id = $1`,
     [jobId, err.message]
+  );
+}
+
+// Partial: main data synced but one or more non-critical steps failed
+async function partialJob(jobId, count, errors) {
+  await query(
+    `UPDATE sync_jobs SET status = 'partial', records_synced = $2, error = $3, current_step = NULL, completed_at = NOW() WHERE id = $1`,
+    [jobId, count, errors.join('; ')]
   );
 }
 
@@ -240,12 +281,12 @@ async function syncOrders(accountId, warehouseMap, clientMap, apiKey, fromDate, 
          RETURNING id`,
         [
           accountId, dbWhId, dbCl, msOrdId,
-          order.Reference    || order.OrderReference || null,
-          order.Channel      || order.Source         || null,
+          order.Reference    || order.OrderReference || order.OrderNumber || null,
+          (order.Channel?.Name || order.Source       || null),
           order.OrderDate    ? order.OrderDate.split('T')[0]    : null,
           order.DespatchDate ? order.DespatchDate.split('T')[0] : null,
-          order.Status       || null,
-          order.CourierName  || order.Courier        || null,
+          resolveOrderStatus(order),
+          order.CourierName  || order.CourierServiceName || order.Courier || null,
           order.TrackingNumber || order.Tracking     || null,
         ]
       );
@@ -454,8 +495,8 @@ async function runFullSync(session, { triggeredBy = 'manual' } = {}) {
 
     if (errors.length) {
       console.warn(`[sync] Done with ${errors.length} step error(s) — ${total} records`);
-      await failJob(jobId, new Error(errors.join('; '))).catch(() => {});
-      return { ok: false, records: total, errors };
+      await partialJob(jobId, total, errors).catch(() => {});
+      return { ok: true, records: total, warnings: errors };
     }
 
     await completeJob(jobId, total);

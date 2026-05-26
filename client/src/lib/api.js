@@ -1,5 +1,7 @@
-// Builds a report API URL with the standard query params
-export function buildReportURL(reportId, { warehouseId, clientId, days = 30, ...extra } = {}) {
+// Builds a report API URL with the standard query params.
+// clientIds: string[] of Mintsoft client IDs (multi-select); takes priority over single clientId.
+// statuses:  string[] of order status values to include.
+export function buildReportURL(reportId, { warehouseId, clientId, clientIds = [], statuses = [], days = 30, ...extra } = {}) {
   const today = new Date()
   const from  = new Date(today)
   from.setDate(today.getDate() - days)
@@ -7,7 +9,9 @@ export function buildReportURL(reportId, { warehouseId, clientId, days = 30, ...
 
   const params = new URLSearchParams({
     warehouseId: warehouseId || '',
-    clientId:    clientId   || '',
+    clientId:    clientIds.length ? '' : (clientId || ''),
+    clientIds:   clientIds.join(','),
+    statuses:    statuses.join(','),
     dateFrom:    fmt(from),
     dateTo:      fmt(today),
     days,
@@ -16,9 +20,14 @@ export function buildReportURL(reportId, { warehouseId, clientId, days = 30, ...
   return `/api/report/${reportId}?${params}`
 }
 
-// Builds the dashboard API URL. Pass refresh=true to bypass server cache.
-export function buildDashboardURL({ warehouseId, clientId, refresh = false } = {}) {
-  const params = new URLSearchParams({ warehouseId: warehouseId || '', clientId: clientId || '' })
+// Builds the dashboard API URL.
+// statuses: string[] of order status values; empty = all statuses.
+export function buildDashboardURL({ warehouseId, clientId, statuses = [], refresh = false } = {}) {
+  const params = new URLSearchParams({
+    warehouseId: warehouseId || '',
+    clientId:    clientId   || '',
+    statuses:    statuses.join(','),
+  })
   if (refresh) params.set('refresh', 'true')
   return `/api/dashboard?${params}`
 }

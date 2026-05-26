@@ -22,8 +22,12 @@ async function run(req, res, url, session) {
     ? (url.searchParams.get('clientId') || null)
     : sessionMsClientId;
 
+  // Comma-separated status filter, e.g. "Despatched,Invoiced"
+  const statusParam = url.searchParams.get('statuses') || '';
+  const statuses    = statusParam ? statusParam.split(',').filter(Boolean) : [];
+
   const refresh  = url.searchParams.get('refresh') === 'true';
-  const cacheKey = `${msWarehouseId}:${msClientId || ''}:${isWarehouse ? 'wh' : 'cl'}`;
+  const cacheKey = `${msWarehouseId}:${msClientId || ''}:${isWarehouse ? 'wh' : 'cl'}:${statusParam}`;
 
   if (!refresh) {
     const cached = dashboardCache.get(cacheKey);
@@ -52,13 +56,13 @@ async function run(req, res, url, session) {
       const stock = await getStock(accountId, warehouseId, null);
 
       send({ type: 'progress', message: 'Fetching order volume (30 days)…' });
-      const orders30 = await getOrderHeaders(accountId, warehouseId, null, from30, toDate);
+      const orders30 = await getOrderHeaders(accountId, warehouseId, null, from30, toDate, { statuses });
 
       send({ type: 'progress', message: 'Fetching order volume (previous period)…' });
-      const ordersPrev = await getOrderHeaders(accountId, warehouseId, null, from60, to30ago);
+      const ordersPrev = await getOrderHeaders(accountId, warehouseId, null, from60, to30ago, { statuses });
 
       send({ type: 'progress', message: 'Fetching recent order detail (21 days)…' });
-      const orders21 = await getOrders(accountId, warehouseId, null, fmt(daysAgo(21)), toDate);
+      const orders21 = await getOrders(accountId, warehouseId, null, fmt(daysAgo(21)), toDate, { statuses });
 
       send({ type: 'progress', message: 'Fetching current month revenue…' });
       const { map: clientInvoices, source: revenueSource } = await getCurrentAccrualsMap(accountId);
@@ -75,10 +79,10 @@ async function run(req, res, url, session) {
       const stock = await getStock(accountId, warehouseId, clientId);
 
       send({ type: 'progress', message: 'Fetching orders (last 30 days)…' });
-      const orders30 = await getOrders(accountId, warehouseId, clientId, from30, toDate);
+      const orders30 = await getOrders(accountId, warehouseId, clientId, from30, toDate, { statuses });
 
       send({ type: 'progress', message: 'Fetching previous period…' });
-      const ordersPrev = await getOrderHeaders(accountId, warehouseId, clientId, from60, to30ago);
+      const ordersPrev = await getOrderHeaders(accountId, warehouseId, clientId, from60, to30ago, { statuses });
 
       send({ type: 'progress', message: 'Fetching product catalogue…' });
       const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
@@ -89,10 +93,10 @@ async function run(req, res, url, session) {
       const stock = await getStock(accountId, warehouseId, clientId);
 
       send({ type: 'progress', message: 'Fetching orders (last 30 days)…' });
-      const orders30 = await getOrders(accountId, warehouseId, clientId, from30, toDate);
+      const orders30 = await getOrders(accountId, warehouseId, clientId, from30, toDate, { statuses });
 
       send({ type: 'progress', message: 'Fetching previous period…' });
-      const ordersPrev = await getOrderHeaders(accountId, warehouseId, clientId, from60, to30ago);
+      const ordersPrev = await getOrderHeaders(accountId, warehouseId, clientId, from60, to30ago, { statuses });
 
       send({ type: 'progress', message: 'Fetching product catalogue…' });
       const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
