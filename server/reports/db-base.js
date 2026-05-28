@@ -1,191 +1,113 @@
 // ─── server/reports/db-base.js ────────────────────────────────────────────────
-// DB-backed equivalents of the Mintsoft API fetchers in base.js.
-// All functions return Mintsoft-shaped objects so computation functions in
-// each report can run unchanged.
+// DB-backed data fetchers for reports. Single-tenant: Mintsoft IDs are PKs.
+// All functions return Mintsoft-shaped objects so report computations run unchanged.
 
 const { query, queryOne } = require('../db');
 
 // ── ID resolution ─────────────────────────────────────────────────────────────
 
-// Convert Mintsoft warehouse/client IDs (from URL params) to DB surrogate IDs.
-// For warehouse users: use their own account.
-// For client users: prefer a warehouse account that holds their data, falling back
-// to their own account. This handles the common case where the warehouse synced all
-// client data and the client's own sync didn't fully populate their account.
-async function resolveIds(session, msWarehouseId, msClientId) {
-  const ownAcc = await queryOne(`SELECT id FROM accounts WHERE username = $1`, [session.username]);
-  if (!ownAcc) throw new Error('Account not synced yet — log in again to trigger the initial sync');
-
-  // Warehouse users always use their own account
-  if (session.isWarehouse) {
-    const accountId = ownAcc.id;
-    let warehouseId = null;
-    if (msWarehouseId) {
-      const wh = await queryOne(
-        `SELECT id FROM warehouses WHERE account_id = $1 AND mintsoft_id = $2`,
-        [accountId, parseInt(msWarehouseId)]
-      );
-      warehouseId = wh?.id ?? null;
-    }
-    let clientId = null;
-    if (msClientId) {
-      const cl = await queryOne(
-        `SELECT id FROM clients WHERE account_id = $1 AND mintsoft_id = $2`,
-        [accountId, parseInt(msClientId)]
-      );
-      clientId = cl?.id ?? null;
-    }
-    return { accountId, warehouseId, clientId };
-  }
-
-  // Client users: prefer a warehouse account that has synced their data (the canonical source).
-  // Fall back to the client's own account only if no warehouse account covers them.
-  const effectiveMsClientId = msClientId || session.clientId;
-
-  if (effectiveMsClientId && msWarehouseId) {
-    const warehouseAccount = await queryOne(
-      `SELECT a.id AS account_id, w.id AS warehouse_id, c.id AS client_id
-       FROM accounts a
-       JOIN warehouses w ON w.account_id = a.id AND w.mintsoft_id = $1
-       JOIN clients   c ON c.account_id = a.id AND c.mintsoft_id = $2
-       WHERE a.is_warehouse = true AND a.last_sync_at IS NOT NULL
-       LIMIT 1`,
-      [parseInt(msWarehouseId), parseInt(effectiveMsClientId)]
-    );
-    if (warehouseAccount) {
-      return {
-        accountId:   warehouseAccount.account_id,
-        warehouseId: warehouseAccount.warehouse_id,
-        clientId:    warehouseAccount.client_id,
-      };
-    }
-  }
-
-  // Fallback: use the client's own account
-  const accountId = ownAcc.id;
-  let warehouseId = null;
-  if (msWarehouseId) {
-    const wh = await queryOne(
-      `SELECT id FROM warehouses WHERE account_id = $1 AND mintsoft_id = $2`,
-      [accountId, parseInt(msWarehouseId)]
-    );
-    warehouseId = wh?.id ?? null;
-  }
-  let clientId = null;
-  if (effectiveMsClientId) {
-    const cl = await queryOne(
-      `SELECT id FROM clients WHERE account_id = $1 AND mintsoft_id = $2`,
-      [accountId, parseInt(effectiveMsClientId)]
-    );
-    clientId = cl?.id ?? null;
-  }
-  return { accountId, warehouseId, clientId };
+// Resolve URL params to integer IDs. No DB lookup needed — Mintsoft IDs are PKs.
+function resolveIds(session, msWarehouseId, msClientId) {
+  const warehouseId = msWarehouseId ? parseInt(msWarehouseId) : null;
+  const effectiveClientId = msClientId || (session.isWarehouse ? null : session.clientId);
+  const clientId = effectiveClientId ? parseInt(effectiveClientId) : null;
+  return { warehouseId, clientId };
 }
 
-// Convert an array of Mintsoft client IDs (strings) to DB surrogate IDs for this account.
-async function resolveClientDbIds(accountId, msClientIds) {
+// Convert Mintsoft client ID strings to integers.
+function resolveClientDbIds(msClientIds) {
   if (!msClientIds?.length) return [];
-  const rows = await query(
-    `SELECT id FROM clients WHERE account_id = $1 AND mintsoft_id = ANY($2)`,
-    [accountId, msClientIds.map(Number)]
-  );
-  return rows.map(r => r.id);
-}
-
-// For client users whose clientId may be null in session — find the single client record for their account.
-// Also checks warehouse accounts that may hold their data.
-async function getClientIdForAccount(accountId) {
-  const row = await queryOne(
-    `SELECT id FROM clients WHERE account_id = $1 ORDER BY id LIMIT 1`,
-    [accountId]
-  );
-  return row?.id ?? null;
+  return msClientIds.map(Number).filter(Boolean);
 }
 
 // ── Stock ─────────────────────────────────────────────────────────────────────
 
-// Returns Mintsoft-shaped stock: [{ SKU, Level, ProductName, ClientId(mintsoft) }]
-async function getStock(accountId, warehouseId, clientId) {
-  let sql = `
-    SELECT sl.sku AS "SKU", sl.qty_on_hand AS "Level",
-           sl.product_name AS "ProductName", c.mintsoft_id AS "ClientId"
-    FROM stock_levels sl
-    JOIN clients c ON sl.client_id = c.id
-    WHERE sl.account_id = $1`;
-  const p = [accountId];
-  if (warehouseId) sql += ` AND sl.warehouse_id = $${p.push(warehouseId)}`;
-  if (clientId)    sql += ` AND sl.client_id = $${p.push(clientId)}`;
+async function getStock(warehouseId, clientId) {
+  const conditions = [];
+  const p = [];
+  if (warehouseId) conditions.push(`sl.warehouse_id = $${p.push(warehouseId)}`);
+  if (clientId)    conditions.push(`sl.client_id = $${p.push(clientId)}`);
+
+  const sql = `
+    SELECT sl.sku       AS "SKU",
+           sl.qty_on_hand AS "Level",
+           p.name       AS "ProductName",
+           sl.client_id AS "ClientId"
+    FROM product_stock_levels sl
+    LEFT JOIN products p ON sl.product_id = p.id
+    ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}`;
   return query(sql, p);
 }
 
 // ── Orders ────────────────────────────────────────────────────────────────────
 
-// Returns orders with nested items:
-// [{ OrderId, OrderDate, DespatchDate, ClientId(mintsoft), Status, OrderItems: [{ SKU, Quantity }] }]
-// opts.clientIds: number[] — DB surrogate client IDs (AND IN (...)); null/[] = all clients
-// opts.statuses:  string[] — order status values to include; null/[] = all statuses
-async function getOrders(accountId, warehouseId, clientId, fromDate, toDate, opts = {}) {
+async function getOrders(warehouseId, clientId, fromDate, toDate, opts = {}) {
   const { clientIds, statuses } = opts;
-  let sql = `
-    SELECT o.mintsoft_id AS "OrderId",
+  const conditions = [];
+  const p = [];
+  if (warehouseId)       conditions.push(`o.warehouse_id = $${p.push(warehouseId)}`);
+  if (clientId)          conditions.push(`o.client_id = $${p.push(clientId)}`);
+  if (clientIds?.length) conditions.push(`o.client_id = ANY($${p.push(clientIds)})`);
+  if (fromDate)          conditions.push(`o.order_date::date >= $${p.push(fromDate)}`);
+  if (toDate)            conditions.push(`o.order_date::date <= $${p.push(toDate)}`);
+  if (statuses?.length)  conditions.push(`o.status_name = ANY($${p.push(statuses)})`);
+
+  const sql = `
+    SELECT o.id              AS "OrderId",
            o.order_date::text    AS "OrderDate",
            o.despatch_date::text AS "DespatchDate",
-           o.status              AS "Status",
-           c.mintsoft_id AS "ClientId",
-           COALESCE(json_agg(json_build_object('SKU', oi.sku, 'Quantity', oi.quantity))
-             FILTER (WHERE oi.id IS NOT NULL), '[]') AS "OrderItems"
+           o.status_name        AS "Status",
+           o.client_id          AS "ClientId",
+           COALESCE(
+             json_agg(json_build_object('SKU', oi.sku, 'Quantity', oi.quantity))
+               FILTER (WHERE oi.id IS NOT NULL),
+             '[]'
+           ) AS "OrderItems"
     FROM orders o
-    LEFT JOIN clients c ON o.client_id = c.id
     LEFT JOIN order_items oi ON oi.order_id = o.id
-    WHERE o.account_id = $1`;
-  const p = [accountId];
-  if (warehouseId)               sql += ` AND o.warehouse_id = $${p.push(warehouseId)}`;
-  if (clientId)                  sql += ` AND o.client_id = $${p.push(clientId)}`;
-  if (clientIds?.length)         sql += ` AND o.client_id = ANY($${p.push(clientIds)})`;
-  if (fromDate)                  sql += ` AND o.despatch_date >= $${p.push(fromDate)}`;
-  if (toDate)                    sql += ` AND o.despatch_date <= $${p.push(toDate)}`;
-  if (statuses?.length)          sql += ` AND o.status = ANY($${p.push(statuses)})`;
-  sql += ` GROUP BY o.id, c.mintsoft_id ORDER BY o.despatch_date DESC NULLS LAST`;
+    ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}
+    GROUP BY o.id
+    ORDER BY o.order_date DESC NULLS LAST`;
   return query(sql, p);
 }
 
-// Returns order headers only (no items) — fast path for counts and date aggregations.
-// [{ OrderId, OrderDate, DespatchDate, ClientId(mintsoft), Status }]
-// opts.clientIds / opts.statuses same as getOrders above.
-async function getOrderHeaders(accountId, warehouseId, clientId, fromDate, toDate, opts = {}) {
+async function getOrderHeaders(warehouseId, clientId, fromDate, toDate, opts = {}) {
   const { clientIds, statuses } = opts;
-  let sql = `
-    SELECT o.mintsoft_id AS "OrderId",
+  const conditions = [];
+  const p = [];
+  if (warehouseId)       conditions.push(`o.warehouse_id = $${p.push(warehouseId)}`);
+  if (clientId)          conditions.push(`o.client_id = $${p.push(clientId)}`);
+  if (clientIds?.length) conditions.push(`o.client_id = ANY($${p.push(clientIds)})`);
+  if (fromDate)          conditions.push(`o.order_date::date >= $${p.push(fromDate)}`);
+  if (toDate)            conditions.push(`o.order_date::date <= $${p.push(toDate)}`);
+  if (statuses?.length)  conditions.push(`o.status_name = ANY($${p.push(statuses)})`);
+
+  const sql = `
+    SELECT o.id              AS "OrderId",
            o.order_date::text    AS "OrderDate",
            o.despatch_date::text AS "DespatchDate",
-           o.status              AS "Status",
-           c.mintsoft_id AS "ClientId"
+           o.status_name        AS "Status",
+           o.client_id          AS "ClientId"
     FROM orders o
-    LEFT JOIN clients c ON o.client_id = c.id
-    WHERE o.account_id = $1`;
-  const p = [accountId];
-  if (warehouseId)               sql += ` AND o.warehouse_id = $${p.push(warehouseId)}`;
-  if (clientId)                  sql += ` AND o.client_id = $${p.push(clientId)}`;
-  if (clientIds?.length)         sql += ` AND o.client_id = ANY($${p.push(clientIds)})`;
-  if (fromDate)                  sql += ` AND o.despatch_date >= $${p.push(fromDate)}`;
-  if (toDate)                    sql += ` AND o.despatch_date <= $${p.push(toDate)}`;
-  if (statuses?.length)          sql += ` AND o.status = ANY($${p.push(statuses)})`;
-  sql += ` ORDER BY o.despatch_date DESC NULLS LAST`;
+    ${conditions.length ? 'WHERE ' + conditions.join(' AND ') : ''}
+    ORDER BY o.order_date DESC NULLS LAST`;
   return query(sql, p);
 }
 
 // ── SKU names ─────────────────────────────────────────────────────────────────
 
-// Returns { sku: name } from stock_levels (product names are persisted during sync).
-async function getSkuNames(accountId, warehouseId, clientId) {
-  let sql = `
-    SELECT DISTINCT ON (sl.sku) sl.sku, sl.product_name
-    FROM stock_levels sl
-    WHERE sl.account_id = $1 AND sl.product_name IS NOT NULL`;
-  const p = [accountId];
-  if (warehouseId) sql += ` AND sl.warehouse_id = $${p.push(warehouseId)}`;
-  if (clientId)    sql += ` AND sl.client_id = $${p.push(clientId)}`;
-  sql += ` ORDER BY sl.sku`;
+async function getSkuNames(warehouseId, clientId) {
+  const conditions = ['p.name IS NOT NULL'];
+  const p = [];
+  if (warehouseId) conditions.push(`sl.warehouse_id = $${p.push(warehouseId)}`);
+  if (clientId)    conditions.push(`sl.client_id = $${p.push(clientId)}`);
+
+  const sql = `
+    SELECT DISTINCT ON (sl.sku) sl.sku, p.name AS product_name
+    FROM product_stock_levels sl
+    LEFT JOIN products p ON sl.product_id = p.id
+    WHERE ${conditions.join(' AND ')}
+    ORDER BY sl.sku`;
   const rows = await query(sql, p);
   const map = {};
   for (const r of rows) if (r.product_name) map[r.sku] = r.product_name;
@@ -216,30 +138,26 @@ function periodMonthStr(dateStr) {
 }
 
 function isCurrentOrFutureMonth(dateStr) {
-  const today = new Date();
+  const today   = new Date();
   const todayPM = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
   return periodMonthStr(dateStr) >= todayPM;
 }
 
-// Single client invoice for a given month — SUMs across multiple Mintsoft invoices for the same month.
-// Uses invoice_accruals for the current month, invoices table for past months.
-async function getInvoiceForClient(accountId, dbClientId, fromDate) {
+async function getInvoiceForClient(clientId, fromDate) {
   const pm = periodMonthStr(fromDate);
 
   if (isCurrentOrFutureMonth(fromDate)) {
     const row = await queryOne(
-      `SELECT ia.*, c.mintsoft_id AS "ClientId"
-       FROM invoice_accruals ia JOIN clients c ON ia.client_id = c.id
-       WHERE ia.account_id = $1 AND ia.client_id = $2 AND ia.period_month = $3`,
-      [accountId, dbClientId, pm]
+      `SELECT ia.*, ia.client_id AS "ClientId"
+       FROM invoice_accruals ia WHERE ia.client_id = $1 AND ia.period_month = $2`,
+      [clientId, pm]
     );
     return row ? toInvShape(row) : null;
   }
 
-  // SUM in case Mintsoft issued multiple invoices for the same month
   const row = await queryOne(
     `SELECT
-       c.mintsoft_id AS "ClientId",
+       i.client_id AS "ClientId",
        SUM(picking_cost)          AS picking_cost,
        SUM(postage_cost)          AS postage_cost,
        SUM(vat_free_postage_cost) AS vat_free_postage_cost,
@@ -251,32 +169,29 @@ async function getInvoiceForClient(accountId, dbClientId, fromDate) {
        SUM(generic_items_cost)    AS generic_items_cost,
        SUM(collections_cost)      AS collections_cost,
        SUM(admin_fee)             AS admin_fee
-     FROM invoices i JOIN clients c ON i.client_id = c.id
-     WHERE i.account_id = $1 AND i.client_id = $2 AND i.period_month = $3
-     GROUP BY c.mintsoft_id`,
-    [accountId, dbClientId, pm]
+     FROM invoices i
+     WHERE i.client_id = $1
+       AND DATE_TRUNC('month', i.invoice_date)::DATE = $2::DATE
+     GROUP BY i.client_id`,
+    [clientId, pm]
   );
   return row ? toInvShape(row) : null;
 }
 
-// All clients' invoices for a given month, SUMmed per client (one query instead of N).
-// Returns Mintsoft-shaped array [{ ClientId(mintsoft), PickingCost, ... }]
-async function getInvoicesForMonth(accountId, fromDate) {
+async function getInvoicesForMonth(fromDate) {
   const pm = periodMonthStr(fromDate);
 
   if (isCurrentOrFutureMonth(fromDate)) {
     const rows = await query(
-      `SELECT ia.*, c.mintsoft_id AS "ClientId"
-       FROM invoice_accruals ia JOIN clients c ON ia.client_id = c.id
-       WHERE ia.account_id = $1 AND ia.period_month = $2`,
-      [accountId, pm]
+      `SELECT ia.*, ia.client_id AS "ClientId" FROM invoice_accruals ia WHERE ia.period_month = $1`,
+      [pm]
     );
     return rows.map(toInvShape);
   }
 
   const rows = await query(
     `SELECT
-       c.mintsoft_id AS "ClientId",
+       i.client_id AS "ClientId",
        SUM(i.picking_cost)          AS picking_cost,
        SUM(i.postage_cost)          AS postage_cost,
        SUM(i.vat_free_postage_cost) AS vat_free_postage_cost,
@@ -288,21 +203,19 @@ async function getInvoicesForMonth(accountId, fromDate) {
        SUM(i.generic_items_cost)    AS generic_items_cost,
        SUM(i.collections_cost)      AS collections_cost,
        SUM(i.admin_fee)             AS admin_fee
-     FROM invoices i JOIN clients c ON i.client_id = c.id
-     WHERE i.account_id = $1 AND i.period_month = $2
-     GROUP BY c.mintsoft_id, c.id`,
-    [accountId, pm]
+     FROM invoices i
+     WHERE DATE_TRUNC('month', i.invoice_date)::DATE = $1::DATE
+     GROUP BY i.client_id`,
+    [pm]
   );
   return rows.map(toInvShape);
 }
 
-// All confirmed invoices (grouped by month) + current-month accrual for a single client.
-// Returns { confirmed: [{ Date(period_month), ...invShape }], accrual: { period_month, ...invShape } | null }
-async function getAllClientInvoices(accountId, dbClientId) {
+async function getAllClientInvoices(clientId) {
   const confirmed = await query(
     `SELECT
-       i.period_month AS "Date",
-       c.mintsoft_id  AS "ClientId",
+       DATE_TRUNC('month', i.invoice_date) AS "Date",
+       i.client_id AS "ClientId",
        SUM(i.picking_cost)          AS picking_cost,
        SUM(i.postage_cost)          AS postage_cost,
        SUM(i.vat_free_postage_cost) AS vat_free_postage_cost,
@@ -314,17 +227,15 @@ async function getAllClientInvoices(accountId, dbClientId) {
        SUM(i.generic_items_cost)    AS generic_items_cost,
        SUM(i.collections_cost)      AS collections_cost,
        SUM(i.admin_fee)             AS admin_fee
-     FROM invoices i JOIN clients c ON i.client_id = c.id
-     WHERE i.account_id = $1 AND i.client_id = $2
-     GROUP BY i.period_month, c.mintsoft_id
-     ORDER BY i.period_month DESC`,
-    [accountId, dbClientId]
+     FROM invoices i
+     WHERE i.client_id = $1
+     GROUP BY DATE_TRUNC('month', i.invoice_date), i.client_id
+     ORDER BY DATE_TRUNC('month', i.invoice_date) DESC`,
+    [clientId]
   );
   const accrual = await queryOne(
-    `SELECT ia.*, c.mintsoft_id AS "ClientId"
-     FROM invoice_accruals ia JOIN clients c ON ia.client_id = c.id
-     WHERE ia.account_id = $1 AND ia.client_id = $2`,
-    [accountId, dbClientId]
+    `SELECT ia.*, ia.client_id AS "ClientId" FROM invoice_accruals ia WHERE ia.client_id = $1`,
+    [clientId]
   );
   return {
     confirmed: confirmed.map(r => ({ ...toInvShape(r), Date: r.Date })),
@@ -332,17 +243,13 @@ async function getAllClientInvoices(accountId, dbClientId) {
   };
 }
 
-// Current-month accruals for all clients → { map: { msClientId: Mintsoft-shaped }, source: 'accrual'|'confirmed' }
-// Falls back to the most recent confirmed invoice per client when no current-month accruals exist.
-async function getCurrentAccrualsMap(accountId) {
+async function getCurrentAccrualsMap() {
   const today = new Date();
   const pm    = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
-  const rows  = await query(
-    `SELECT ia.*, c.mintsoft_id AS "ClientId"
-     FROM invoice_accruals ia
-     JOIN clients c ON ia.client_id = c.id
-     WHERE ia.account_id = $1 AND ia.period_month = $2`,
-    [accountId, pm]
+
+  const rows = await query(
+    `SELECT ia.*, ia.client_id AS "ClientId" FROM invoice_accruals ia WHERE ia.period_month = $1`,
+    [pm]
   );
   if (rows.length > 0) {
     const map = {};
@@ -350,26 +257,16 @@ async function getCurrentAccrualsMap(accountId) {
     return { map, source: 'accrual' };
   }
 
-  // No current-month accruals — use most recent confirmed invoice per client
+  // Fallback: most recent confirmed invoice per client
   const fallback = await query(
     `SELECT DISTINCT ON (i.client_id)
-       c.mintsoft_id AS "ClientId",
-       SUM(i.picking_cost)          OVER w AS picking_cost,
-       SUM(i.postage_cost)          OVER w AS postage_cost,
-       SUM(i.vat_free_postage_cost) OVER w AS vat_free_postage_cost,
-       SUM(i.storage_cost)          OVER w AS storage_cost,
-       SUM(i.goods_in_cost)         OVER w AS goods_in_cost,
-       SUM(i.returns_cost)          OVER w AS returns_cost,
-       SUM(i.rework_cost)           OVER w AS rework_cost,
-       SUM(i.packaging_cost)        OVER w AS packaging_cost,
-       SUM(i.generic_items_cost)    OVER w AS generic_items_cost,
-       SUM(i.collections_cost)      OVER w AS collections_cost,
-       SUM(i.admin_fee)             OVER w AS admin_fee
-     FROM invoices i JOIN clients c ON i.client_id = c.id
-     WHERE i.account_id = $1
-     WINDOW w AS (PARTITION BY i.client_id, i.period_month)
-     ORDER BY i.client_id, i.period_month DESC`,
-    [accountId]
+       i.client_id AS "ClientId",
+       i.picking_cost, i.postage_cost, i.vat_free_postage_cost,
+       i.storage_cost, i.goods_in_cost, i.returns_cost,
+       i.rework_cost, i.packaging_cost, i.generic_items_cost,
+       i.collections_cost, i.admin_fee
+     FROM invoices i
+     ORDER BY i.client_id, i.invoice_date DESC`
   );
   const map = {};
   for (const r of fallback) map[String(r.ClientId)] = toInvShape(r);
@@ -379,7 +276,6 @@ async function getCurrentAccrualsMap(accountId) {
 module.exports = {
   resolveIds,
   resolveClientDbIds,
-  getClientIdForAccount,
   getStock,
   getOrders,
   getOrderHeaders,

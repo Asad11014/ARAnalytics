@@ -2,7 +2,7 @@
 // Warehouse view: revenue per client from invoice data.
 // Client view: own cost breakdown, split between 3PL service fees and courier costs.
 
-const { resolveIds, getClientIdForAccount, getInvoiceForClient, getInvoicesForMonth, getAllClientInvoices } = require('../db-base');
+const { resolveIds, getInvoiceForClient, getInvoicesForMonth, getAllClientInvoices } = require('../db-base');
 const { startSSE, parseReportParams } = require('../base');
 
 const meta = {
@@ -21,16 +21,14 @@ async function run(req, res, url, session) {
   const send = startSSE(res);
 
   try {
-    const { accountId, clientId: dbClientId } = await resolveIds(
-      session, msWarehouseId, session.isWarehouse ? null : session.clientId
-    );
+    const { clientId } = resolveIds(session, msWarehouseId, session.isWarehouse ? null : session.clientId);
 
     if (session.isWarehouse) {
-      await runWarehouseView(send, accountId, session, from, to);
+      await runWarehouseView(send, session, from, to);
     } else if (mode === 'totals') {
-      await runClientTotals(send, accountId, dbClientId, session);
+      await runClientTotals(send, clientId, session);
     } else {
-      await runClientView(send, accountId, dbClientId, session, from, to);
+      await runClientView(send, clientId, session, from, to);
     }
   } catch (err) {
     send({ type: 'error', message: err.message });
@@ -40,7 +38,7 @@ async function run(req, res, url, session) {
 
 // ── Warehouse: revenue per client ─────────────────────────────────────────────
 
-async function runWarehouseView(send, accountId, session, fromParam, toParam) {
+async function runWarehouseView(send, session, fromParam, toParam) {
   const clients = session.clients || [];
   if (!clients.length) {
     send({ type: 'done', viewType: 'warehouse', rows: [], meta: { totalRevenue: 0, totalClients: 0 } });
@@ -52,9 +50,8 @@ async function runWarehouseView(send, accountId, session, fromParam, toParam) {
   const to   = toParam   || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   send({ type: 'progress', message: 'Fetching billing data…' });
-  const invRows = await getInvoicesForMonth(accountId, from);
+  const invRows = await getInvoicesForMonth(from);
 
-  // Key by Mintsoft client ID
   const invMap = {};
   for (const inv of invRows) invMap[String(inv.ClientId)] = inv;
 
@@ -85,13 +82,8 @@ async function runWarehouseView(send, accountId, session, fromParam, toParam) {
 
 // ── Client: own cost breakdown ────────────────────────────────────────────────
 
-async function runClientView(send, accountId, dbClientId, session, fromParam, toParam) {
-  let resolvedClientId = dbClientId;
-  if (!resolvedClientId) {
-    resolvedClientId = await getClientIdForAccount(accountId);
-  }
-
-  if (!resolvedClientId) {
+async function runClientView(send, clientId, session, fromParam, toParam) {
+  if (!clientId) {
     send({ type: 'error', message: 'Could not determine your client account. Please contact your warehouse.' });
     return;
   }
@@ -101,7 +93,7 @@ async function runClientView(send, accountId, dbClientId, session, fromParam, to
   const to   = toParam   || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   send({ type: 'progress', message: 'Fetching your billing data…' });
-  const inv = await getInvoiceForClient(accountId, resolvedClientId, from);
+  const inv = await getInvoiceForClient(clientId, from);
 
   if (!inv) {
     send({ type: 'done', viewType: 'client', breakdown: null, meta: { period: `${from} → ${to}` } });
@@ -122,25 +114,19 @@ async function runClientView(send, accountId, dbClientId, session, fromParam, to
     type: 'done',
     viewType: 'client',
     breakdown: { picking, storage, goodsIn, returns, other, serviceFees, postage, total },
-    meta: { total, serviceFees, postage, period: `${from} → ${to}` },
+    meta:      { total, serviceFees, postage, period: `${from} → ${to}` },
   });
 }
 
 // ── Client: all invoice totals for the billing periods table ─────────────────
 
-async function runClientTotals(send, accountId, dbClientId, session) {
-  let resolvedClientId = dbClientId;
-  if (!resolvedClientId) {
-    resolvedClientId = await getClientIdForAccount(accountId);
-  }
-
-  if (!resolvedClientId) {
+async function runClientTotals(send, clientId, session) {
+  if (!clientId) {
     send({ type: 'done', viewType: 'client-totals', totals: {} });
     return;
   }
 
-  const { confirmed, accrual } = await getAllClientInvoices(accountId, resolvedClientId);
-
+  const { confirmed, accrual } = await getAllClientInvoices(clientId);
   const totals = {};
 
   for (const inv of confirmed) {

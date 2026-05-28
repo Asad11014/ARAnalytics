@@ -20,15 +20,15 @@ async function run(req, res, url, session) {
   const send  = startSSE(res);
 
   try {
-    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientIds.length ? null : msClientId);
-    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
-    const clientDbIds = msClientIds.length ? await resolveClientDbIds(accountId, msClientIds) : null;
+    const { warehouseId, clientId } = resolveIds(session, msWarehouseId, msClientIds.length ? null : msClientId);
+    if (!warehouseId) throw new Error('warehouseId is required');
+    const clientDbIds = msClientIds.length ? resolveClientDbIds(msClientIds) : null;
 
     send({ type: 'progress', message: 'Fetching order history…' });
-    const orders = await getOrders(accountId, warehouseId, clientId, dateFrom, dateTo, { clientIds: clientDbIds, statuses });
+    const orders = await getOrders(warehouseId, clientId, dateFrom, dateTo, { clientIds: clientDbIds, statuses });
 
     send({ type: 'progress', message: 'Fetching product names…' });
-    const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
+    const skuNameMap = await getSkuNames(warehouseId, clientId);
 
     send({ type: 'progress', message: 'Ranking SKUs…' });
     const { topSellers, worstSellers, all } = calculate(orders, skuNameMap, { limit });

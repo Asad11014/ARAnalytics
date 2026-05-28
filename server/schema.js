@@ -1,148 +1,340 @@
 // ─── server/schema.js ─────────────────────────────────────────────────────────
-// Creates all core tables on startup (idempotent — safe to run on every boot).
-// Must run before calendar.ensureSchema() and quotations.ensureSchema()
-// since those tables have foreign keys into accounts/clients/warehouses.
+// Single-tenant schema — one deployment per 3PL organisation.
+// All CREATE/ALTER statements are idempotent — safe to run on every boot.
 
 const { query } = require('./db');
 
 async function ensureCoreSchema() {
-  // ── Tenants ──────────────────────────────────────────────────────────────────
+
+  // ── Reference / Lookup tables ─────────────────────────────────────────────
+
   await query(`
-    CREATE TABLE IF NOT EXISTS accounts (
-      id           SERIAL PRIMARY KEY,
-      username     TEXT        NOT NULL UNIQUE,
-      api_key      TEXT        NOT NULL,
-      is_warehouse BOOLEAN     NOT NULL DEFAULT TRUE,
-      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      last_sync_at TIMESTAMPTZ
+    CREATE TABLE IF NOT EXISTS order_status_types (
+      id        INTEGER PRIMARY KEY,
+      name      TEXT NOT NULL,
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS asn_status_types (
+      id        INTEGER PRIMARY KEY,
+      name      TEXT NOT NULL,
+      colour    TEXT,
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS order_channels (
+      id          INTEGER PRIMARY KEY,
+      name        TEXT NOT NULL,
+      description TEXT,
+      logo        TEXT,
+      client_id   INTEGER,
+      active      BOOLEAN DEFAULT TRUE,
+      synced_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS couriers (
+      id        INTEGER PRIMARY KEY,
+      name      TEXT NOT NULL,
+      active    BOOLEAN DEFAULT TRUE,
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // ── Core entities ─────────────────────────────────────────────────────────
+
+  await query(`
     CREATE TABLE IF NOT EXISTS warehouses (
-      id           SERIAL  PRIMARY KEY,
-      account_id   INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      mintsoft_id  INTEGER NOT NULL,
-      name         TEXT    NOT NULL,
-      code         TEXT,
-      UNIQUE (account_id, mintsoft_id)
+      id        INTEGER PRIMARY KEY,
+      name      TEXT NOT NULL,
+      code      TEXT,
+      synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
   await query(`
     CREATE TABLE IF NOT EXISTS clients (
-      id           SERIAL  PRIMARY KEY,
-      account_id   INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      mintsoft_id  INTEGER NOT NULL,
-      name         TEXT    NOT NULL,
-      UNIQUE (account_id, mintsoft_id)
+      id         INTEGER PRIMARY KEY,
+      name       TEXT NOT NULL,
+      short_name TEXT,
+      active     BOOLEAN DEFAULT TRUE,
+      updated_at TIMESTAMPTZ,
+      synced_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
-  // ── Stock ─────────────────────────────────────────────────────────────────────
+  // ── Products ──────────────────────────────────────────────────────────────
+
   await query(`
-    CREATE TABLE IF NOT EXISTS stock_levels (
-      id             SERIAL  PRIMARY KEY,
-      account_id     INTEGER NOT NULL REFERENCES accounts(id)   ON DELETE CASCADE,
-      warehouse_id   INTEGER NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
-      client_id      INTEGER NOT NULL REFERENCES clients(id)    ON DELETE CASCADE,
-      sku            TEXT    NOT NULL,
-      product_name   TEXT,
-      qty_on_hand    INTEGER NOT NULL DEFAULT 0,
-      qty_allocated  INTEGER NOT NULL DEFAULT 0,
-      qty_available  INTEGER NOT NULL DEFAULT 0,
-      updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (account_id, warehouse_id, client_id, sku)
+    CREATE TABLE IF NOT EXISTS products (
+      id                          INTEGER PRIMARY KEY,
+      client_id                   INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+      sku                         TEXT NOT NULL,
+      name                        TEXT,
+      description                 TEXT,
+      customs_description         TEXT,
+      ean                         TEXT,
+      upc                         TEXT,
+      weight                      NUMERIC(10,4),
+      height                      NUMERIC(10,4),
+      width                       NUMERIC(10,4),
+      depth                       NUMERIC(10,4),
+      price                       NUMERIC(12,2),
+      cost_price                  NUMERIC(12,2),
+      vat_exempt                  BOOLEAN DEFAULT FALSE,
+      back_order                  BOOLEAN DEFAULT FALSE,
+      bundle                      BOOLEAN DEFAULT FALSE,
+      discontinued                BOOLEAN DEFAULT FALSE,
+      low_stock_alert_level       INTEGER,
+      handling_time               INTEGER,
+      units_per_parcel            INTEGER,
+      additional_parcels_required INTEGER,
+      has_batch_number            BOOLEAN DEFAULT FALSE,
+      has_serial_number           BOOLEAN DEFAULT FALSE,
+      has_expiry_date             BOOLEAN DEFAULT FALSE,
+      best_before_warning_days    INTEGER,
+      image_url                   TEXT,
+      country_of_manufacture_id   INTEGER,
+      commodity_code              TEXT,
+      packing_instructions        TEXT,
+      subscription                BOOLEAN DEFAULT FALSE,
+      updated_at                  TIMESTAMPTZ,
+      synced_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
-  // ── Orders ────────────────────────────────────────────────────────────────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS product_stock_levels (
+      product_id    INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      warehouse_id  INTEGER NOT NULL REFERENCES warehouses(id) ON DELETE CASCADE,
+      client_id     INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+      sku           TEXT NOT NULL,
+      qty_on_hand   INTEGER NOT NULL DEFAULT 0,
+      qty_allocated INTEGER NOT NULL DEFAULT 0,
+      qty_available INTEGER NOT NULL DEFAULT 0,
+      qty_pre_order INTEGER NOT NULL DEFAULT 0,
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (product_id, warehouse_id)
+    )
+  `);
+
+  // ── Orders ────────────────────────────────────────────────────────────────
+
   await query(`
     CREATE TABLE IF NOT EXISTS orders (
-      id              SERIAL  PRIMARY KEY,
-      account_id      INTEGER NOT NULL REFERENCES accounts(id)   ON DELETE CASCADE,
-      warehouse_id    INTEGER NOT NULL REFERENCES warehouses(id),
-      client_id       INTEGER          REFERENCES clients(id),
-      mintsoft_id     INTEGER NOT NULL,
-      reference       TEXT,
-      channel         TEXT,
-      order_date      DATE,
-      despatch_date   DATE,
-      status          TEXT,
-      courier_name    TEXT,
-      tracking_number TEXT,
-      UNIQUE (account_id, mintsoft_id)
+      id                      INTEGER PRIMARY KEY,
+      warehouse_id            INTEGER REFERENCES warehouses(id),
+      client_id               INTEGER REFERENCES clients(id),
+      order_number            TEXT,
+      external_reference      TEXT,
+      status_id               INTEGER,
+      status_name             TEXT,
+      channel_id              INTEGER,
+      channel_name            TEXT,
+      order_date              TIMESTAMPTZ,
+      despatch_date           TIMESTAMPTZ,
+      required_despatch_date  TIMESTAMPTZ,
+      required_delivery_date  TIMESTAMPTZ,
+      sla_warning_date        TIMESTAMPTZ,
+      sla_despatch_date       TIMESTAMPTZ,
+      recipient_title         TEXT,
+      recipient_first_name    TEXT,
+      recipient_last_name     TEXT,
+      recipient_company       TEXT,
+      address1                TEXT,
+      address2                TEXT,
+      address3                TEXT,
+      town                    TEXT,
+      county                  TEXT,
+      postcode                TEXT,
+      country_id              INTEGER,
+      phone                   TEXT,
+      mobile                  TEXT,
+      email                   TEXT,
+      courier_service_id      INTEGER,
+      courier_service_name    TEXT,
+      courier_service_type_id INTEGER,
+      tracking_number         TEXT,
+      tracking_url            TEXT,
+      number_of_parcels       INTEGER DEFAULT 1,
+      total_weight            NUMERIC(10,4),
+      order_value             NUMERIC(12,2),
+      shipping_net            NUMERIC(12,2),
+      shipping_tax            NUMERIC(12,2),
+      shipping_gross          NUMERIC(12,2),
+      discount_net            NUMERIC(12,2),
+      discount_tax            NUMERIC(12,2),
+      discount_gross          NUMERIC(12,2),
+      total_order_net         NUMERIC(12,2),
+      total_order_tax         NUMERIC(12,2),
+      total_order_gross       NUMERIC(12,2),
+      total_vat               NUMERIC(12,2),
+      currency_id             INTEGER,
+      comments                TEXT,
+      delivery_notes          TEXT,
+      gift_messages           TEXT,
+      vat_number              TEXT,
+      source                  TEXT,
+      order_lock              BOOLEAN DEFAULT FALSE,
+      pii_removed             BOOLEAN DEFAULT FALSE,
+      despatched_by_user      TEXT,
+      part                    INTEGER DEFAULT 1,
+      number_of_parts         INTEGER DEFAULT 1,
+      updated_at              TIMESTAMPTZ,
+      synced_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
   await query(`
     CREATE TABLE IF NOT EXISTS order_items (
-      id           SERIAL  PRIMARY KEY,
-      order_id     INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-      sku          TEXT    NOT NULL,
-      product_name TEXT,
-      quantity     INTEGER NOT NULL DEFAULT 0
+      id            INTEGER PRIMARY KEY,
+      order_id      INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_id    INTEGER REFERENCES products(id) ON DELETE SET NULL,
+      sku           TEXT NOT NULL,
+      quantity      INTEGER NOT NULL DEFAULT 0,
+      allocated     INTEGER DEFAULT 0,
+      committed     INTEGER DEFAULT 0,
+      on_back_order INTEGER DEFAULT 0,
+      price         NUMERIC(12,2),
+      price_net     NUMERIC(12,2),
+      vat           NUMERIC(12,2),
+      discount      NUMERIC(12,2),
+      updated_at    TIMESTAMPTZ
     )
   `);
 
-  // ── Financial ─────────────────────────────────────────────────────────────────
+  await query(`
+    CREATE TABLE IF NOT EXISTS order_shipments (
+      id                 INTEGER PRIMARY KEY,
+      order_id           INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      tracking_number    TEXT,
+      courier_service_id INTEGER,
+      despatched_at      TIMESTAMPTZ,
+      updated_at         TIMESTAMPTZ
+    )
+  `);
+
+  // ── ASNs (Goods In / Advance Shipping Notices) ────────────────────────────
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS asns (
+      id                    INTEGER PRIMARY KEY,
+      warehouse_id          INTEGER REFERENCES warehouses(id),
+      client_id             INTEGER REFERENCES clients(id),
+      po_reference          TEXT,
+      supplier_name         TEXT,
+      product_supplier_id   INTEGER,
+      goods_in_type         TEXT,
+      quantity              INTEGER,
+      status_id             INTEGER,
+      status_name           TEXT,
+      estimated_delivery    TIMESTAMPTZ,
+      warehouse_booked_date TIMESTAMPTZ,
+      booked_in_date        TIMESTAMPTZ,
+      comments              TEXT,
+      shipped               BOOLEAN DEFAULT FALSE,
+      hours_logged          NUMERIC(8,2) DEFAULT 0,
+      updated_at            TIMESTAMPTZ,
+      synced_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS asn_items (
+      id           SERIAL PRIMARY KEY,
+      asn_id       INTEGER NOT NULL REFERENCES asns(id) ON DELETE CASCADE,
+      product_id   INTEGER REFERENCES products(id) ON DELETE SET NULL,
+      sku          TEXT,
+      expected_qty INTEGER DEFAULT 0,
+      received_qty INTEGER DEFAULT 0,
+      updated_at   TIMESTAMPTZ
+    )
+  `);
+
+  // ── Invoices / Accounting ─────────────────────────────────────────────────
+
   await query(`
     CREATE TABLE IF NOT EXISTS invoices (
-      id                    SERIAL  PRIMARY KEY,
-      account_id            INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      client_id             INTEGER NOT NULL REFERENCES clients(id),
-      mintsoft_id           INTEGER NOT NULL,
-      period_month          DATE    NOT NULL,
-      picking_cost          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      postage_cost          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      vat_free_postage_cost NUMERIC(12,2) NOT NULL DEFAULT 0,
-      storage_cost          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      goods_in_cost         NUMERIC(12,2) NOT NULL DEFAULT 0,
-      returns_cost          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      rework_cost           NUMERIC(12,2) NOT NULL DEFAULT 0,
-      packaging_cost        NUMERIC(12,2) NOT NULL DEFAULT 0,
-      generic_items_cost    NUMERIC(12,2) NOT NULL DEFAULT 0,
-      collections_cost      NUMERIC(12,2) NOT NULL DEFAULT 0,
-      admin_fee             NUMERIC(12,2) NOT NULL DEFAULT 0,
-      number_of_parcels     INTEGER NOT NULL DEFAULT 0,
-      number_of_items       INTEGER NOT NULL DEFAULT 0,
-      synced_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (account_id, mintsoft_id),
-      UNIQUE (account_id, client_id, period_month)
+      id                    INTEGER PRIMARY KEY,
+      client_id             INTEGER REFERENCES clients(id),
+      name                  TEXT,
+      invoice_date          TIMESTAMPTZ,
+      comments              TEXT,
+      number_of_parcels     INTEGER DEFAULT 0,
+      number_of_items       INTEGER DEFAULT 0,
+      picking_cost          NUMERIC(12,2) DEFAULT 0,
+      postage_cost          NUMERIC(12,2) DEFAULT 0,
+      vat_free_postage_cost NUMERIC(12,2) DEFAULT 0,
+      storage_cost          NUMERIC(12,2) DEFAULT 0,
+      goods_in_cost         NUMERIC(12,2) DEFAULT 0,
+      returns_cost          NUMERIC(12,2) DEFAULT 0,
+      rework_cost           NUMERIC(12,2) DEFAULT 0,
+      packaging_cost        NUMERIC(12,2) DEFAULT 0,
+      generic_items_cost    NUMERIC(12,2) DEFAULT 0,
+      collections_cost      NUMERIC(12,2) DEFAULT 0,
+      admin_fee             NUMERIC(12,2) DEFAULT 0,
+      updated_at            TIMESTAMPTZ,
+      synced_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
   await query(`
     CREATE TABLE IF NOT EXISTS invoice_accruals (
-      account_id            INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      client_id             INTEGER NOT NULL REFERENCES clients(id),
-      period_month          DATE    NOT NULL,
-      picking_cost          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      postage_cost          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      vat_free_postage_cost NUMERIC(12,2) NOT NULL DEFAULT 0,
-      storage_cost          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      goods_in_cost         NUMERIC(12,2) NOT NULL DEFAULT 0,
-      returns_cost          NUMERIC(12,2) NOT NULL DEFAULT 0,
-      rework_cost           NUMERIC(12,2) NOT NULL DEFAULT 0,
-      packaging_cost        NUMERIC(12,2) NOT NULL DEFAULT 0,
-      generic_items_cost    NUMERIC(12,2) NOT NULL DEFAULT 0,
-      collections_cost      NUMERIC(12,2) NOT NULL DEFAULT 0,
-      admin_fee             NUMERIC(12,2) NOT NULL DEFAULT 0,
-      number_of_parcels     INTEGER NOT NULL DEFAULT 0,
-      number_of_items       INTEGER NOT NULL DEFAULT 0,
+      client_id             INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      period_month          DATE NOT NULL,
+      picking_cost          NUMERIC(12,2) DEFAULT 0,
+      postage_cost          NUMERIC(12,2) DEFAULT 0,
+      vat_free_postage_cost NUMERIC(12,2) DEFAULT 0,
+      storage_cost          NUMERIC(12,2) DEFAULT 0,
+      goods_in_cost         NUMERIC(12,2) DEFAULT 0,
+      returns_cost          NUMERIC(12,2) DEFAULT 0,
+      rework_cost           NUMERIC(12,2) DEFAULT 0,
+      packaging_cost        NUMERIC(12,2) DEFAULT 0,
+      generic_items_cost    NUMERIC(12,2) DEFAULT 0,
+      collections_cost      NUMERIC(12,2) DEFAULT 0,
+      admin_fee             NUMERIC(12,2) DEFAULT 0,
+      number_of_parcels     INTEGER DEFAULT 0,
+      number_of_items       INTEGER DEFAULT 0,
       updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      PRIMARY KEY (account_id, client_id, period_month)
+      PRIMARY KEY (client_id, period_month)
     )
   `);
 
-  // ── Sync tracking ─────────────────────────────────────────────────────────────
+  // ── Batches (pick batches) ────────────────────────────────────────────────
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS batches (
+      id                    INTEGER PRIMARY KEY,
+      warehouse_id          INTEGER REFERENCES warehouses(id),
+      client_id             INTEGER REFERENCES clients(id),
+      reference             TEXT,
+      number_of_orders      INTEGER DEFAULT 0,
+      picking_started       BOOLEAN DEFAULT FALSE,
+      picking_complete      BOOLEAN DEFAULT FALSE,
+      despatched            BOOLEAN DEFAULT FALSE,
+      items_skipped         BOOLEAN DEFAULT FALSE,
+      assigned_user         TEXT,
+      created_at            TIMESTAMPTZ,
+      last_pick_interaction TIMESTAMPTZ,
+      updated_at            TIMESTAMPTZ,
+      synced_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // ── Sync tracking ─────────────────────────────────────────────────────────
+
   await query(`
     CREATE TABLE IF NOT EXISTS sync_jobs (
-      id             SERIAL  PRIMARY KEY,
-      account_id     INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-      entity         TEXT    NOT NULL,
-      triggered_by   TEXT    NOT NULL DEFAULT 'cron',
-      status         TEXT    NOT NULL DEFAULT 'running',
+      id             SERIAL PRIMARY KEY,
+      triggered_by   TEXT NOT NULL DEFAULT 'cron',
+      trigger_key    TEXT,
+      entity         TEXT NOT NULL DEFAULT 'full',
+      status         TEXT NOT NULL DEFAULT 'running',
       records_synced INTEGER NOT NULL DEFAULT 0,
       current_step   TEXT,
       error          TEXT,
@@ -150,18 +342,93 @@ async function ensureCoreSchema() {
       completed_at   TIMESTAMPTZ
     )
   `);
-  await query(`ALTER TABLE sync_jobs ADD COLUMN IF NOT EXISTS current_step TEXT`);
 
-  // ── Indexes (IF NOT EXISTS requires Postgres 9.5+, safe to re-run) ────────────
-  await query(`CREATE INDEX IF NOT EXISTS orders_account_wh_date_idx     ON orders (account_id, warehouse_id, despatch_date DESC)`);
-  await query(`CREATE INDEX IF NOT EXISTS orders_account_client_date_idx  ON orders (account_id, client_id,    despatch_date DESC)`);
-  await query(`CREATE INDEX IF NOT EXISTS orders_account_wh_odate_idx     ON orders (account_id, warehouse_id, order_date DESC)`);
-  await query(`CREATE INDEX IF NOT EXISTS orders_account_client_odate_idx ON orders (account_id, client_id,    order_date DESC)`);
-  await query(`CREATE INDEX IF NOT EXISTS order_items_order_idx         ON order_items (order_id)`);
-  await query(`CREATE INDEX IF NOT EXISTS order_items_sku_idx           ON order_items (sku)`);
-  await query(`CREATE INDEX IF NOT EXISTS stock_levels_account_idx      ON stock_levels(account_id, warehouse_id, client_id)`);
-  await query(`CREATE INDEX IF NOT EXISTS invoices_account_client_idx   ON invoices    (account_id, client_id, period_month DESC)`);
-  await query(`CREATE INDEX IF NOT EXISTS sync_jobs_account_idx         ON sync_jobs   (account_id, started_at DESC)`);
+  // ── User sessions (cache per API key) ─────────────────────────────────────
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      api_key       TEXT PRIMARY KEY,
+      username      TEXT,
+      is_warehouse  BOOLEAN NOT NULL DEFAULT FALSE,
+      client_id     INTEGER,
+      warehouse_ids INTEGER[],
+      session_data  JSONB,
+      last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      synced_at     TIMESTAMPTZ
+    )
+  `);
+
+  // ── Calendar ──────────────────────────────────────────────────────────────
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS calendar_events (
+      id           SERIAL PRIMARY KEY,
+      warehouse_id INTEGER REFERENCES warehouses(id) ON DELETE CASCADE,
+      client_id    INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+      title        TEXT NOT NULL,
+      description  TEXT,
+      event_type   TEXT NOT NULL DEFAULT 'manual',
+      start_date   DATE NOT NULL,
+      start_time   TIME,
+      end_date     DATE,
+      end_time     TIME,
+      colour       TEXT NOT NULL DEFAULT '#1f22ac',
+      all_day      BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by   TEXT,
+      external_id  INTEGER,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS calendar_event_shares (
+      event_id  INTEGER NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+      client_id INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      PRIMARY KEY (event_id, client_id)
+    )
+  `);
+
+  // ── Quotations ────────────────────────────────────────────────────────────
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS quotes (
+      id            SERIAL PRIMARY KEY,
+      warehouse_id  INTEGER REFERENCES warehouses(id) ON DELETE SET NULL,
+      client_name   TEXT,
+      client_email  TEXT,
+      status        TEXT NOT NULL DEFAULT 'draft',
+      valid_until   DATE,
+      notes         TEXT,
+      line_items    JSONB NOT NULL DEFAULT '[]',
+      total_monthly NUMERIC(12,2),
+      total_setup   NUMERIC(12,2),
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // ── Indexes ───────────────────────────────────────────────────────────────
+
+  await query(`CREATE INDEX IF NOT EXISTS orders_warehouse_order_date_idx   ON orders (warehouse_id, order_date DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS orders_warehouse_despatch_idx     ON orders (warehouse_id, despatch_date DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS orders_client_order_date_idx      ON orders (client_id, order_date DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS orders_client_despatch_idx        ON orders (client_id, despatch_date DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS orders_status_name_idx            ON orders (status_name)`);
+  await query(`CREATE INDEX IF NOT EXISTS orders_updated_at_idx             ON orders (updated_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS order_items_order_idx             ON order_items (order_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS order_items_sku_idx               ON order_items (sku)`);
+  await query(`CREATE INDEX IF NOT EXISTS order_items_product_idx           ON order_items (product_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS products_client_sku_idx           ON products (client_id, sku)`);
+  await query(`CREATE INDEX IF NOT EXISTS products_updated_at_idx           ON products (updated_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS product_stock_client_wh_idx       ON product_stock_levels (client_id, warehouse_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS product_stock_sku_idx             ON product_stock_levels (sku)`);
+  await query(`CREATE INDEX IF NOT EXISTS asns_warehouse_status_idx         ON asns (warehouse_id, status_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS asns_estimated_delivery_idx       ON asns (estimated_delivery)`);
+  await query(`CREATE INDEX IF NOT EXISTS asns_updated_at_idx              ON asns (updated_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS invoices_client_date_idx          ON invoices (client_id, invoice_date DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS batches_warehouse_created_idx     ON batches (warehouse_id, created_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS sync_jobs_started_at_idx          ON sync_jobs (started_at DESC)`);
 }
 
 module.exports = { ensureCoreSchema };

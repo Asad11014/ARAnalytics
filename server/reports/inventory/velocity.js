@@ -19,17 +19,17 @@ async function run(req, res, url, session) {
   const send = startSSE(res);
 
   try {
-    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
-    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
+    const { warehouseId, clientId } = resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('warehouseId is required');
 
     send({ type: 'progress', message: 'Fetching order history…' });
-    const orders = await getOrders(accountId, warehouseId, clientId, dateFrom, dateTo);
+    const orders = await getOrders(warehouseId, clientId, dateFrom, dateTo);
 
     send({ type: 'progress', message: 'Fetching stock…' });
-    const stock = await getStock(accountId, warehouseId, clientId);
+    const stock = await getStock(warehouseId, clientId);
 
     send({ type: 'progress', message: 'Fetching product names…' });
-    const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
+    const skuNameMap = await getSkuNames(warehouseId, clientId);
 
     const days = parseInt(url.searchParams.get('days') || '30');
     send({ type: 'progress', message: 'Calculating velocity…' });

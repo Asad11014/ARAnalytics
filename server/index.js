@@ -13,10 +13,10 @@ const dashboard = require('./reports/dashboard');
 const calendar    = require('./calendar');
 const quotations  = require('./quotations');
 const { ensureCoreSchema } = require('./schema');
-const { runFullSync, runIncrementalSync, getAccountId, syncGoodsInOnly } = require('./sync');
+const { runFullSync, runIncrementalSync, getSyncStatus } = require('./sync');
 const { query, queryOne } = require('./db');
 
-// Bootstrap schemas on startup — core tables first, then dependent tables
+// Bootstrap schemas on startup
 ensureCoreSchema()
   .then(() => Promise.all([
     calendar.ensureSchema(),
@@ -24,16 +24,50 @@ ensureCoreSchema()
   ]))
   .catch(e => console.error('[schema] Bootstrap error:', e.message));
 
-const DIST_DIR = path.join(__dirname, '../client/dist');
+// ── Midnight cron ─────────────────────────────────────────────────────────────
+// Nightly sync using the admin API key — rolling 7-day window + 90-day ASN window.
+function scheduleMidnightSync() {
+  const adminKey = process.env.MINTSOFT_ADMIN_KEY;
+  if (!adminKey) {
+    console.log('[cron] MINTSOFT_ADMIN_KEY not set — nightly sync disabled');
+    return;
+  }
 
-const PORT = process.env.PORT || 3001;
+  function msUntilMidnight() {
+    const now  = new Date();
+    const next = new Date(now);
+    next.setHours(24, 0, 0, 0);
+    return next - now;
+  }
+
+  function scheduleNext() {
+    const delay = msUntilMidnight();
+    console.log(`[cron] Next nightly sync in ${Math.round(delay / 60000)} minutes`);
+    setTimeout(async () => {
+      console.log('[cron] Running nightly incremental sync…');
+      try {
+        await runIncrementalSync({ apiKey: adminKey, triggeredBy: 'cron' });
+      } catch (err) {
+        console.error('[cron] Nightly sync error:', err.message);
+      }
+      scheduleNext();
+    }, delay);
+  }
+
+  scheduleNext();
+}
+
+scheduleMidnightSync();
+
+const DIST_DIR = path.join(__dirname, '../client/dist');
+const PORT     = process.env.PORT || 3001;
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
   // ── CORS ──────────────────────────────────────────────────────────────────
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, ms-apikey');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
@@ -83,12 +117,11 @@ const server = http.createServer(async (req, res) => {
       const session = auth.requireSession(req, res);
       if (!session) return;
       const body = await req.json().catch(() => ({}));
-      const full = body.full !== false; // default full sync; pass { full: false } for incremental
+      const full = body.full !== false;
       res.json(200, { ok: true, message: full ? 'Full sync started' : 'Incremental sync started' });
-      // Fire after response so client isn't waiting
       setImmediate(async () => {
         const fn = full ? runFullSync : runIncrementalSync;
-        await fn(session, { triggeredBy: 'manual' });
+        await fn({ apiKey: session.apiKey, triggeredBy: 'manual' });
       });
       return;
     }
@@ -96,25 +129,14 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/sync/status' && req.method === 'GET') {
       const session = auth.requireSession(req, res);
       if (!session) return;
-      const accountId = await getAccountId(session.username);
-      if (!accountId) return res.json(200, { synced: false });
-      const [account, lastJob] = await Promise.all([
-        queryOne(`SELECT last_sync_at FROM accounts WHERE id = $1`, [accountId]),
-        queryOne(
-          `SELECT id, entity, triggered_by, status, records_synced, current_step, error, started_at, completed_at
-           FROM sync_jobs WHERE account_id = $1 ORDER BY started_at DESC LIMIT 1`,
-          [accountId]
-        ),
-      ]);
-      return res.json(200, { lastSyncAt: account?.last_sync_at ?? null, lastJob: lastJob ?? null });
+      const status = await getSyncStatus();
+      return res.json(200, status);
     }
 
-    // ── Orders by client (for dashboard panel with date + status filters) ──────
+    // ── Orders by client (for dashboard panel) ────────────────────────────────
     if (pathname === '/api/orders/by-client' && req.method === 'GET') {
       const session = auth.requireSession(req, res);
       if (!session) return;
-      const accRow = await queryOne(`SELECT id FROM accounts WHERE username = $1`, [session.username]);
-      if (!accRow) return res.json(200, { rows: [] });
 
       const msWarehouseId = url.searchParams.get('warehouseId');
       const dateFrom      = url.searchParams.get('dateFrom');
@@ -123,40 +145,32 @@ const server = http.createServer(async (req, res) => {
       const statuses      = statusParam.split(',').filter(Boolean);
 
       let sql = `
-        SELECT c.mintsoft_id AS client_id, c.name AS client_name, COUNT(*)::int AS order_count
+        SELECT o.client_id, c.name AS client_name, COUNT(*)::int AS order_count
         FROM orders o
         JOIN clients c ON o.client_id = c.id
-        WHERE o.account_id = $1`;
-      const p = [accRow.id];
+        WHERE 1=1`;
+      const p = [];
 
-      if (msWarehouseId) {
-        const wh = await queryOne(
-          `SELECT id FROM warehouses WHERE account_id = $1 AND mintsoft_id = $2`,
-          [accRow.id, parseInt(msWarehouseId)]
-        );
-        if (wh) sql += ` AND o.warehouse_id = $${p.push(wh.id)}`;
-      }
-      if (dateFrom) sql += ` AND o.order_date >= $${p.push(dateFrom)}`;
-      if (dateTo)   sql += ` AND o.order_date <= $${p.push(dateTo)}`;
-      if (statuses.length) sql += ` AND o.status = ANY($${p.push(statuses)})`;
+      if (msWarehouseId) sql += ` AND o.warehouse_id = $${p.push(parseInt(msWarehouseId))}`;
+      if (dateFrom)      sql += ` AND o.order_date::date >= $${p.push(dateFrom)}`;
+      if (dateTo)        sql += ` AND o.order_date::date <= $${p.push(dateTo)}`;
+      if (statuses.length) sql += ` AND o.status_name = ANY($${p.push(statuses)})`;
 
-      sql += ` GROUP BY c.mintsoft_id, c.name ORDER BY order_count DESC`;
+      sql += ` GROUP BY o.client_id, c.name ORDER BY order_count DESC`;
       const rows = await query(sql, p);
-      return res.json(200, { rows });
+      return res.json(200, { rows: rows.map(r => ({ ...r, client_id: r.client_id })) });
     }
 
-    // ── Order statuses — DB values for this account, merged with full Mintsoft list ──
+    // ── Order statuses from DB ────────────────────────────────────────────────
     if (pathname === '/api/orders/statuses' && req.method === 'GET') {
       const session = auth.requireSession(req, res);
       if (!session) return;
-      const accRow = await queryOne(`SELECT id FROM accounts WHERE username = $1`, [session.username]);
-      if (!accRow) return res.json(200, { statuses: [] });
-      // Statuses that exist in this account's order data
       const rows = await query(
-        `SELECT DISTINCT status FROM orders WHERE account_id = $1 AND status IS NOT NULL AND status != '[object Object]' ORDER BY status`,
-        [accRow.id]
+        `SELECT DISTINCT status_name FROM orders
+         WHERE status_name IS NOT NULL
+         ORDER BY status_name`
       );
-      return res.json(200, { statuses: rows.map(r => r.status) });
+      return res.json(200, { statuses: rows.map(r => r.status_name) });
     }
 
     // ── Calendar ASN sync (warehouse only, fast) ──────────────────────────────
@@ -164,12 +178,12 @@ const server = http.createServer(async (req, res) => {
       const session = auth.requireSession(req, res);
       if (!session) return;
       if (!session.isWarehouse) return res.json(403, { error: 'Warehouse users only' });
-      try {
-        const result = await syncGoodsInOnly(session);
-        return res.json(200, result);
-      } catch (err) {
-        return res.json(500, { error: err.message });
-      }
+      res.json(200, { ok: true, message: 'ASN sync started' });
+      setImmediate(() =>
+        runIncrementalSync({ apiKey: session.apiKey, triggeredBy: 'calendar-asn' })
+          .catch(err => console.error('[calendar-asn sync]', err.message))
+      );
+      return;
     }
 
     // ── Calendar routes ───────────────────────────────────────────────────────
@@ -201,10 +215,9 @@ const server = http.createServer(async (req, res) => {
 
     // ── SPA static serving (production build) ─────────────────────────────────
     if (req.method === 'GET') {
-      // Try to serve an exact static asset from dist first
       const assetPath = path.join(DIST_DIR, pathname);
       if (fs.existsSync(assetPath) && fs.statSync(assetPath).isFile()) {
-        const ext = path.extname(pathname);
+        const ext  = path.extname(pathname);
         const mime = {
           '.js': 'application/javascript', '.css': 'text/css',
           '.html': 'text/html', '.svg': 'image/svg+xml',
@@ -213,7 +226,6 @@ const server = http.createServer(async (req, res) => {
         }[ext] || 'application/octet-stream';
         return serveFile(res, assetPath, mime);
       }
-      // SPA fallback — serve index.html for all unmatched GET routes
       const indexPath = path.join(DIST_DIR, 'index.html');
       if (fs.existsSync(indexPath)) return serveFile(res, indexPath, 'text/html');
     }

@@ -2,6 +2,7 @@
 // Aggregated summary data for the home dashboard. Reads from PostgreSQL.
 
 const { resolveIds, getStock, getOrders, getOrderHeaders, getSkuNames, getCurrentAccrualsMap } = require('./db-base');
+
 const { buildSkuSales, buildSkuDailySales, fmt, daysAgo, startSSE } = require('./base');
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -39,8 +40,8 @@ async function run(req, res, url, session) {
   }
 
   try {
-    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientId);
-    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
+    const { warehouseId, clientId } = resolveIds(session, msWarehouseId, msClientId);
+    if (!warehouseId) throw new Error('warehouseId is required');
 
     const today   = new Date();
     const from30  = fmt(daysAgo(30));
@@ -51,55 +52,39 @@ async function run(req, res, url, session) {
     let data;
 
     if (isWarehouse && !msClientId) {
-      // Full cross-client warehouse view
       send({ type: 'progress', message: 'Fetching stock levels…' });
-      const stock = await getStock(accountId, warehouseId, null);
+      const stock = await getStock(warehouseId, null);
 
       send({ type: 'progress', message: 'Fetching order volume (30 days)…' });
-      const orders30 = await getOrderHeaders(accountId, warehouseId, null, from30, toDate, { statuses });
+      const orders30 = await getOrderHeaders(warehouseId, null, from30, toDate, { statuses });
 
       send({ type: 'progress', message: 'Fetching order volume (previous period)…' });
-      const ordersPrev = await getOrderHeaders(accountId, warehouseId, null, from60, to30ago, { statuses });
+      const ordersPrev = await getOrderHeaders(warehouseId, null, from60, to30ago, { statuses });
 
       send({ type: 'progress', message: 'Fetching recent order detail (21 days)…' });
-      const orders21 = await getOrders(accountId, warehouseId, null, fmt(daysAgo(21)), toDate, { statuses });
+      const orders21 = await getOrders(warehouseId, null, fmt(daysAgo(21)), toDate, { statuses });
 
       send({ type: 'progress', message: 'Fetching current month revenue…' });
-      const { map: clientInvoices, source: revenueSource } = await getCurrentAccrualsMap(accountId);
+      const { map: clientInvoices, source: revenueSource } = await getCurrentAccrualsMap();
 
       send({ type: 'progress', message: 'Fetching product catalogue…' });
-      const skuNameMap = await getSkuNames(accountId, warehouseId, null);
+      const skuNameMap = await getSkuNames(warehouseId, null);
 
       data = computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, clientInvoices, clients || [], skuNameMap, revenueSource);
-    } else if (isWarehouse && msClientId) {
-      // Warehouse user drilling into a specific client — show that client's dashboard
-      if (!clientId) throw new Error(`Client ${msClientId} not found in database — trigger a sync`);
-
-      send({ type: 'progress', message: 'Fetching stock levels…' });
-      const stock = await getStock(accountId, warehouseId, clientId);
-
-      send({ type: 'progress', message: 'Fetching orders (last 30 days)…' });
-      const orders30 = await getOrders(accountId, warehouseId, clientId, from30, toDate, { statuses });
-
-      send({ type: 'progress', message: 'Fetching previous period…' });
-      const ordersPrev = await getOrderHeaders(accountId, warehouseId, clientId, from60, to30ago, { statuses });
-
-      send({ type: 'progress', message: 'Fetching product catalogue…' });
-      const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
-
-      data = computeClientDashboard(stock, orders30, ordersPrev, skuNameMap);
     } else {
+      const effectiveClientId = isWarehouse ? clientId : clientId;
+
       send({ type: 'progress', message: 'Fetching stock levels…' });
-      const stock = await getStock(accountId, warehouseId, clientId);
+      const stock = await getStock(warehouseId, effectiveClientId);
 
       send({ type: 'progress', message: 'Fetching orders (last 30 days)…' });
-      const orders30 = await getOrders(accountId, warehouseId, clientId, from30, toDate, { statuses });
+      const orders30 = await getOrders(warehouseId, effectiveClientId, from30, toDate, { statuses });
 
       send({ type: 'progress', message: 'Fetching previous period…' });
-      const ordersPrev = await getOrderHeaders(accountId, warehouseId, clientId, from60, to30ago, { statuses });
+      const ordersPrev = await getOrderHeaders(warehouseId, effectiveClientId, from60, to30ago, { statuses });
 
       send({ type: 'progress', message: 'Fetching product catalogue…' });
-      const skuNameMap = await getSkuNames(accountId, warehouseId, clientId);
+      const skuNameMap = await getSkuNames(warehouseId, effectiveClientId);
 
       data = computeClientDashboard(stock, orders30, ordersPrev, skuNameMap);
     }

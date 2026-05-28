@@ -21,9 +21,9 @@ async function run(req, res, url, session) {
   const send = startSSE(res);
 
   try {
-    const { accountId, warehouseId, clientId } = await resolveIds(session, msWarehouseId, msClientIds.length ? null : msClientId);
-    if (!warehouseId) throw new Error('Warehouse not in database — trigger a sync first');
-    const clientDbIds = msClientIds.length ? await resolveClientDbIds(accountId, msClientIds) : null;
+    const { warehouseId, clientId } = resolveIds(session, msWarehouseId, msClientIds.length ? null : msClientId);
+    if (!warehouseId) throw new Error('warehouseId is required');
+    const clientDbIds = msClientIds.length ? resolveClientDbIds(msClientIds) : null;
 
     const clientMap = {};
     for (const c of (session.clients || [])) {
@@ -33,7 +33,7 @@ async function run(req, res, url, session) {
     }
 
     send({ type: 'progress', message: 'Fetching orders…' });
-    const orders = await getOrderHeaders(accountId, warehouseId, clientId, dateFrom, dateTo, { clientIds: clientDbIds, statuses });
+    const orders = await getOrderHeaders(warehouseId, clientId, dateFrom, dateTo, { clientIds: clientDbIds, statuses });
 
     send({ type: 'progress', message: 'Calculating fulfillment metrics…' });
     const { rows, kpis } = calculate(orders, slaDays, clientMap, msClientId);
