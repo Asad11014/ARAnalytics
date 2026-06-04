@@ -4,8 +4,12 @@
 export const TOP_LINKS = [
   { to: '/app',            label: 'Dashboard',  icon: '⬛', exact: true },
   { to: '/app/calendar',   label: 'Calendar',   icon: '📅' },
-  { to: '/app/quotations', label: 'Quotations', icon: '💬' },
-  { to: '/app/my-quotes',  label: 'My Quotes',  icon: '📋' },
+];
+
+// Quotes — collapsible section (mirrors the Reports layout)
+export const QUOTE_ITEMS = [
+  { to: '/app/quotations', label: 'New Quote', icon: '💬' },
+  { to: '/app/my-quotes',  label: 'My Quotes', icon: '📋' },
 ];
 
 // Report sub-categories within the single "Reports" section.
@@ -26,7 +30,9 @@ export const REPORT_GROUPS = [
     label: 'Operations',
     warehouseOnly: true,
     items: [
-      { to: '/app/operations/fulfillment', label: 'Fulfillment',  icon: '📤', badge: 'new'  },
+      { to: '/app/operations/fulfillment',  label: 'Fulfillment',      icon: '📤', badge: 'new'  },
+      { to: '/app/operations/eod-despatch', label: 'End-of-Day Despatch', icon: '🚚', badge: 'new'  },
+      { to: '/app/operations/pick-list',    label: 'Pick List',        icon: '📝', badge: 'new'  },
     ]
   },
   {

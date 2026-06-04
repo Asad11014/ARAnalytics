@@ -12,6 +12,7 @@ const reports   = require('./reports/index');
 const dashboard = require('./reports/dashboard');
 const calendar    = require('./calendar');
 const quotations  = require('./quotations');
+const picklist    = require('./picklist');
 const { ensureCoreSchema } = require('./schema');
 const { runFullSync, runIncrementalSync, getSyncStatus } = require('./sync');
 const { query, queryOne } = require('./db');
@@ -205,6 +206,17 @@ const server = http.createServer(async (req, res) => {
       if (!session) return;
       try {
         return await quotations.handle(req, res, url, session, req.method);
+      } catch (err) {
+        return res.json(500, { error: err.message });
+      }
+    }
+
+    // ── Pick list (warehouse only) ────────────────────────────────────────────
+    if (pathname === '/api/picklist' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      try {
+        return await picklist.handle(req, res, url, session);
       } catch (err) {
         return res.json(500, { error: err.message });
       }

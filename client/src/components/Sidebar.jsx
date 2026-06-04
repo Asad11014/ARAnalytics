@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useSession } from '../context/SessionContext'
 import { useUI }      from '../context/UIContext'
-import { TOP_LINKS, REPORT_GROUPS } from '../lib/nav'
+import { TOP_LINKS, REPORT_GROUPS, QUOTE_ITEMS } from '../lib/nav'
 import clsx from 'clsx'
 
 const BADGE = {
@@ -159,6 +159,10 @@ export default function Sidebar() {
     REPORT_GROUPS.some(g => g.items.some(item => location.pathname.startsWith(item.to)))
   )
 
+  const [quotesOpen, setQuotesOpen] = useState(() =>
+    QUOTE_ITEMS.some(item => location.pathname.startsWith(item.to))
+  )
+
   async function logout() {
     await fetch('/api/logout', { method: 'POST' })
     navigate('/')
@@ -239,6 +243,49 @@ export default function Sidebar() {
               {link.label}
             </NavLink>
           ))}
+        </div>
+
+        <div className="h-px bg-brand-border mx-4 my-2" />
+
+        {/* Quotes — collapsible section */}
+        <div>
+          <button
+            onClick={() => setQuotesOpen(o => !o)}
+            className="w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors hover:bg-brand-surface2 group select-none"
+          >
+            <span className="text-base w-5 text-center flex-shrink-0">💬</span>
+            <span className={clsx(
+              'flex-1 font-mono text-[10px] uppercase tracking-widest font-bold',
+              quotesOpen ? 'text-primary' : 'text-ink-dim group-hover:text-ink'
+            )}>
+              Quotes
+            </span>
+            <span className={clsx('font-mono text-[10px] text-ink-dim transition-transform duration-200', quotesOpen && 'rotate-90')}>
+              ▶
+            </span>
+          </button>
+
+          <div className={clsx(
+            'overflow-hidden transition-all duration-200',
+            quotesOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'
+          )}>
+            {QUOTE_ITEMS.map(item => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={closeSidebar}
+                className={({ isActive }) => clsx(
+                  'flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-all no-underline mx-2 rounded',
+                  isActive
+                    ? 'bg-primary/10 text-primary font-semibold'
+                    : 'text-ink-muted hover:bg-brand-surface2 hover:text-ink'
+                )}
+              >
+                <span className="text-sm flex-shrink-0">{item.icon}</span>
+                <span className="flex-1 truncate">{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
         </div>
 
         <div className="h-px bg-brand-border mx-4 my-2" />

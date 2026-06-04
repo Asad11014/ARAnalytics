@@ -12,6 +12,7 @@ const REPORTS = {
   'inventory-turnover':     require('./inventory/turnover'),
   // ── Operations ────────────────────────────────────────────────────────────
   'fulfillment':            require('./operations/fulfillment'),
+  'eod-despatch':           require('./operations/eod-despatch'),
   'receiving':              require('./operations/receiving'),
   'errors':                 require('./operations/errors'),
 
