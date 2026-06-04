@@ -72,6 +72,17 @@ parameter naming/casing is inconsistent and has repeatedly caused 400/404s.
   unallocated orders (e.g. awaiting-replen) — which is exactly why we use the report above instead.
 - `GET /api/Warehouse/{WarehouseId}/Location/All` — all bin locations in a warehouse.
 
+## Replenishment points
+- `GET /api/ReplenPoints` — per-SKU replen config. Params: `ProductId`, `SKU`,
+  `LocationTypeId`, `PageNo`, `Limit`.
+  - Row fields: `ProductId`, `ProductSKU`, `ProductName`, `LocationTypeName` (e.g. `PICK`),
+    `Size` (target capacity to refill the face up to), `ReplenPoint` (threshold to trigger replen).
+  - ⚠️ **ReplenPoint and Size are per SKU (per location type), NOT per bin.** Two SKUs sharing
+    the same pick bin each have their own values — key the lookup by SKU.
+  - Used by the Replen List: compare each PICK face's qty (from ProductsInLocationReport) to the
+    SKU's ReplenPoint; if ≤, replen `Size − qty` from a BULK/STORE/PALLET location holding that SKU.
+- `POST /api/ReplenPoint` · `PUT /api/ReplenPoint/{id}` — add/update replen points.
+
 ## Reference data
 - `GET /api/Warehouse` · `GET /api/Client` · `GET /api/Order/Statuses` · `GET /api/ASN/Statuses`
 

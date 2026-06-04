@@ -17,6 +17,7 @@ import Velocity         from './inventory/Velocity'
 import Fulfillment from './operations/Fulfillment'
 import EodDespatch from './operations/EodDespatch'
 import PickList    from './operations/PickList'
+import ReplenList  from './operations/ReplenList'
 
 // Financial
 import Profitability from './financial/Profitability'
@@ -91,6 +92,7 @@ function AppShellLayout() {
           <Route path="operations/fulfillment"  element={<WarehouseOnly><Fulfillment /></WarehouseOnly>} />
           <Route path="operations/eod-despatch" element={<WarehouseOnly><EodDespatch /></WarehouseOnly>} />
           <Route path="operations/pick-list"    element={<WarehouseOnly><PickList /></WarehouseOnly>} />
+          <Route path="operations/replen"       element={<WarehouseOnly><ReplenList /></WarehouseOnly>} />
 
           {/* Financial */}
           <Route path="financial/profitability" element={<Profitability />} />
