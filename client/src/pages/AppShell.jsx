@@ -83,7 +83,7 @@ function AppShellLayout() {
             <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
           </svg>
         </button>
-        <span className="font-extrabold text-sm text-ink">PF Analytics</span>
+        <span className="font-extrabold text-sm text-ink">ARAnalytics</span>
       </div>
 
       {sidebarOpen && (

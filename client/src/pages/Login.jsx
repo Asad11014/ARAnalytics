@@ -49,11 +49,11 @@ export default function Login() {
 
         {/* Logo */}
         <div className="flex items-center gap-3 mb-8">
-          <div className="w-11 h-11 bg-primary rounded-lg flex items-center justify-center text-white font-extrabold text-xl flex-shrink-0">
-            PF
+          <div className="w-11 h-11 bg-primary rounded-lg flex items-center justify-center text-white font-extrabold text-base flex-shrink-0">
+            AR
           </div>
           <div>
-            <h1 className="text-lg font-extrabold text-ink leading-tight">PF Analytics</h1>
+            <h1 className="text-lg font-extrabold text-ink leading-tight">ARAnalytics</h1>
             <p className="font-mono text-[10px] text-ink-muted tracking-wide mt-0.5 uppercase">
               Powered by Mintsoft
             </p>

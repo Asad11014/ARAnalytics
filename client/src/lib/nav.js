@@ -32,8 +32,8 @@ export const REPORT_GROUPS = [
     items: [
       { to: '/app/operations/fulfillment',  label: 'Fulfillment',      icon: '📤', badge: 'new'  },
       { to: '/app/operations/eod-despatch', label: 'End-of-Day Despatch', icon: '🚚', badge: 'new'  },
-      { to: '/app/operations/pick-list',    label: 'Pick List',        icon: '📝', badge: 'new'  },
-      { to: '/app/operations/replen',       label: 'Replen List',      icon: '🔁', badge: 'new'  },
+      { to: '/app/operations/pick-list',    label: 'Pick List',        icon: '📝', badge: 'new', hideInDemo: true },
+      { to: '/app/operations/replen',       label: 'Replen List',      icon: '🔁', badge: 'new', hideInDemo: true },
     ]
   },
   {

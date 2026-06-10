@@ -168,7 +168,10 @@ export default function Sidebar() {
     navigate('/')
   }
 
-  const visibleGroups = REPORT_GROUPS.filter(g => !g.warehouseOnly || session?.isWarehouse)
+  const visibleGroups = REPORT_GROUPS
+    .filter(g => !g.warehouseOnly || session?.isWarehouse)
+    .map(g => ({ ...g, items: g.items.filter(it => !(session?.demo && it.hideInDemo)) }))
+    .filter(g => g.items.length)
 
   return (
     <aside className={clsx(
@@ -180,11 +183,11 @@ export default function Sidebar() {
 
       {/* Logo */}
       <div className="px-5 py-4 border-b-2 border-primary flex items-center gap-3 flex-shrink-0">
-        <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center text-white font-extrabold text-sm flex-shrink-0">
-          PF
+        <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center text-white font-extrabold text-[11px] flex-shrink-0">
+          AR
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-extrabold text-sm text-ink leading-tight">PF Analytics</div>
+          <div className="font-extrabold text-sm text-ink leading-tight">ARAnalytics</div>
           <div className="font-mono text-[9px] text-ink-muted tracking-widest uppercase mt-0.5">
             3PL Intelligence
           </div>

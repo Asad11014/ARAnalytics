@@ -11,6 +11,7 @@
 
 const { mintsoftGet } = require('../../mintsoft');
 const { startSSE }    = require('../base');
+const { DEMO_CLIENTS } = require('../../demo/constants');
 
 const meta = {
   title:       'End-of-Day Despatch',
@@ -38,7 +39,80 @@ function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Deterministic 32-bit hash of a string (FNV-1a) — used to make demo numbers
+// stable within a day but varied between clients/days.
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+// Demo variant: synthesises a plausible end-of-day summary from the demo
+// clients, with no Mintsoft call. Numbers are deterministic per day, so the
+// report is stable through the day and shifts naturally from one day to the next.
+function runDemo(req, res, session) {
+  const send  = startSSE(res);
+  const today = todayStr();
+  const clients = (session.clients && session.clients.length) ? session.clients : DEMO_CLIENTS;
+
+  const byClient = clients.map(c => {
+    const h       = hashStr(`${today}:${c.ID || c.Id || c.id}`);
+    const orders  = 6 + (h % 38);
+    const parcels = orders + (h >> 5) % Math.max(1, Math.round(orders * 0.4));
+    return { clientName: c.Name || c.name, orders, parcels };
+  }).sort((a, b) => b.orders - a.orders);
+
+  const totalOrders  = byClient.reduce((s, c) => s + c.orders, 0);
+  const totalParcels = byClient.reduce((s, c) => s + c.parcels, 0);
+
+  // Carrier split — Royal Mail dominates; APC/FedEx split orders into more parcels.
+  const rm    = Math.round(totalOrders * 0.60);
+  const apc   = Math.round(totalOrders * 0.25);
+  const fedex = Math.round(totalOrders * 0.10);
+  const otherOrders = Math.max(0, totalOrders - rm - apc - fedex);
+  const byCourier = [
+    { courier: 'Royal Mail', orders: rm,    consignments: rm },
+    { courier: 'APC',        orders: apc,   consignments: Math.round(apc   * 1.4) },
+    { courier: 'FedEx',      orders: fedex, consignments: Math.round(fedex * 1.5) },
+  ];
+  const trackedConsignments = byCourier.reduce((s, c) => s + c.consignments, 0);
+
+  // A few ASNs booked in today.
+  const asns = [];
+  for (const c of clients) {
+    const h = hashStr(`${today}:asn:${c.ID || c.Id || c.id}`);
+    if (h % 3 === 0) continue;                       // not every client receives stock today
+    asns.push({
+      asnNumber:   900000 + (h % 9000),
+      clientName:  c.Name || c.name,
+      poReference: `PO-${1000 + (h % 9000)}`,
+      quantity:    50 + (h % 600),
+      status:      ['Booked In', 'Part Received'][h % 2],
+    });
+  }
+  asns.sort((a, b) => a.clientName.localeCompare(b.clientName));
+
+  send({
+    type: 'done',
+    date: today,
+    byClient,
+    byCourier,
+    asns,
+    meta: {
+      totalOrders,
+      totalParcels,
+      activeClients: byClient.length,
+      trackedConsignments,
+      otherOrders,
+      totalAsns: asns.length,
+    },
+  });
+  res.end();
+}
+
 async function run(req, res, url, session) {
+  if (session.demo) return runDemo(req, res, session);
+
   const send = startSSE(res);
 
   try {
