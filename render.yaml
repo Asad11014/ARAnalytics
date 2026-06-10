@@ -1,0 +1,36 @@
+# Render Blueprint — pf-forecaster DEMO deployment
+# Provisions a public, read-only demo: a Node web service + its OWN Postgres,
+# seeded with sample data on boot. This database is separate from production, so
+# nothing in the demo can ever affect real client data.
+# Docs: https://render.com/docs/blueprint-spec
+
+databases:
+  - name: pf-demo-db
+    plan: free
+    databaseName: pf_demo
+    user: pf_demo
+
+services:
+  - type: web
+    name: pf-forecaster-demo
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22.13.0"
+      # Enables SSL for the Render-managed Postgres connection (see server/db.js).
+      - key: NODE_ENV
+        value: production
+      # Turns this deployment into the demo: seeds sample data on boot, exposes
+      # /api/demo-login, disables live sync / Mintsoft proxy, blocks all writes.
+      - key: DEMO_MODE
+        value: "true"
+      # Wired automatically from the database above — never points at production.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pf-demo-db
+          property: connectionString
