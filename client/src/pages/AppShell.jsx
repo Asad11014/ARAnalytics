@@ -32,6 +32,22 @@ function WarehouseOnly({ children }) {
   return children
 }
 
+function DemoBanner() {
+  return (
+    <div className="sticky top-0 z-20 bg-primary text-white px-4 py-1.5 flex items-center justify-center gap-3 text-center">
+      <span className="font-mono text-[11px] tracking-wide">
+        🔎 Demo mode — sample data, read-only. Nothing you do here is saved.
+      </span>
+      <a
+        href="https://pf-landing.onrender.com"
+        className="font-mono text-[11px] font-bold underline underline-offset-2 hover:opacity-80 flex-shrink-0"
+      >
+        Book a real demo →
+      </a>
+    </div>
+  )
+}
+
 function AppShellLayout() {
   const { session, loading } = useSession()
   const { sidebarOpen, openSidebar, closeSidebar } = useUI()
@@ -77,6 +93,7 @@ function AppShellLayout() {
       <Sidebar />
 
       <main className="lg:ml-60 flex-1 min-h-screen flex flex-col pt-12 lg:pt-0 min-w-0 overflow-x-hidden">
+        {session.demo && <DemoBanner />}
         <Routes>
           <Route index element={<Dashboard />} />
           <Route path="calendar"    element={<Calendar />} />

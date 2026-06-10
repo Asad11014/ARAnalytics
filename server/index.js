@@ -17,13 +17,17 @@ const replen      = require('./replen');
 const { ensureCoreSchema } = require('./schema');
 const { runFullSync, runIncrementalSync, getSyncStatus } = require('./sync');
 const { query, queryOne } = require('./db');
+const { seedDemo } = require('./demo/seed-demo');
 
-// Bootstrap schemas on startup
+const DEMO_MODE = !!process.env.DEMO_MODE;
+
+// Bootstrap schemas on startup; seed the demo dataset when running as a demo.
 ensureCoreSchema()
   .then(() => Promise.all([
     calendar.ensureSchema(),
     quotations.ensureSchema(),
   ]))
+  .then(() => { if (DEMO_MODE) return seedDemo(); })
   .catch(e => console.error('[schema] Bootstrap error:', e.message));
 
 // ── Midnight cron ─────────────────────────────────────────────────────────────
@@ -89,9 +93,10 @@ const server = http.createServer(async (req, res) => {
     const { pathname } = url;
 
     // ── Auth routes ───────────────────────────────────────────────────────────
-    if (pathname === '/api/login'  && req.method === 'POST') return auth.login(req, res);
-    if (pathname === '/api/logout' && req.method === 'POST') return auth.logout(req, res);
-    if (pathname === '/api/me'     && req.method === 'GET')  return auth.me(req, res);
+    if (pathname === '/api/login'      && req.method === 'POST') return auth.login(req, res);
+    if (pathname === '/api/demo-login' && req.method === 'POST') return auth.demoLogin(req, res);
+    if (pathname === '/api/logout'     && req.method === 'POST') return auth.logout(req, res);
+    if (pathname === '/api/me'         && req.method === 'GET')  return auth.me(req, res);
 
     // ── Dashboard route ───────────────────────────────────────────────────────
     if (pathname === '/api/dashboard' && req.method === 'GET') {
@@ -118,6 +123,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/sync' && req.method === 'POST') {
       const session = auth.requireSession(req, res);
       if (!session) return;
+      if (session.demo) return res.json(200, { ok: true, demo: true, message: 'Sync is disabled in the demo' });
       const body = await req.json().catch(() => ({}));
       const full = body.full !== false;
       res.json(200, { ok: true, message: full ? 'Full sync started' : 'Incremental sync started' });
@@ -179,6 +185,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/calendar/sync-asn' && req.method === 'POST') {
       const session = auth.requireSession(req, res);
       if (!session) return;
+      if (session.demo) return res.json(200, { ok: true, demo: true, message: 'Sync is disabled in the demo' });
       if (!session.isWarehouse) return res.json(403, { error: 'Warehouse users only' });
       res.json(200, { ok: true, message: 'ASN sync started' });
       setImmediate(() =>
@@ -192,12 +199,14 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/calendar' && (req.method === 'GET' || req.method === 'POST')) {
       const session = auth.requireSession(req, res);
       if (!session) return;
+      if (blockDemoWrite(session, req, res)) return;
       return calendar.handle(req, res, url, session, req.method, null);
     }
     const calEventMatch = pathname.match(/^\/api\/calendar\/(\d+)$/);
     if (calEventMatch && (req.method === 'PUT' || req.method === 'DELETE')) {
       const session = auth.requireSession(req, res);
       if (!session) return;
+      if (blockDemoWrite(session, req, res)) return;
       return calendar.handle(req, res, url, session, req.method, calEventMatch[1]);
     }
 
@@ -205,6 +214,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/quotes' && (req.method === 'GET' || req.method === 'POST')) {
       const session = auth.requireSession(req, res);
       if (!session) return;
+      if (blockDemoWrite(session, req, res)) return;
       try {
         return await quotations.handle(req, res, url, session, req.method);
       } catch (err) {
@@ -235,7 +245,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     // ── Pass-through proxy ────────────────────────────────────────────────────
-    if (pathname.startsWith('/proxy/')) return proxy.passThrough(req, res, url);
+    // Disabled entirely in demo: the demo has no Mintsoft credentials and must
+    // never reach the live API.
+    if (pathname.startsWith('/proxy/')) {
+      if (DEMO_MODE) return res.json(403, { error: 'Disabled in demo' });
+      return proxy.passThrough(req, res, url);
+    }
 
     // ── SPA static serving (production build) ─────────────────────────────────
     if (req.method === 'GET') {
@@ -261,6 +276,16 @@ const server = http.createServer(async (req, res) => {
     res.json(500, { error: err.message });
   }
 });
+
+// Reject mutating requests for demo sessions. Returns true if the request was
+// handled (blocked), false otherwise. GETs always pass through (read-only demo).
+function blockDemoWrite(session, req, res) {
+  if (session.demo && req.method !== 'GET') {
+    res.json(403, { error: 'This is a read-only demo — changes are disabled.', demo: true });
+    return true;
+  }
+  return false;
+}
 
 function serveFile(res, filePath, contentType) {
   fs.readFile(filePath, (err, data) => {

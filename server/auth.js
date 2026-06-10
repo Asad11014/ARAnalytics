@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const { mintsoftGet } = require('./mintsoft');
 const { runFullSync, runIncrementalSync } = require('./sync');
 const { queryOne } = require('./db');
+const { DEMO_WAREHOUSE, DEMO_CLIENTS } = require('./demo/constants');
 
 // In-memory session store: { sessionToken: { apiKey, clientId, username, ... } }
 const sessions = {};
@@ -164,11 +165,11 @@ async function inferClientIdFromStock(apiKey, warehouseId) {
 
 // ── Session helpers ───────────────────────────────────────────────────────────
 
-function createSession(apiKey, clientId, username, isWarehouse = false, clients = [], warehouses = []) {
+function createSession(apiKey, clientId, username, isWarehouse = false, clients = [], warehouses = [], demo = false) {
   pruneExpiredSessions();
   const token = crypto.randomBytes(32).toString('hex');
   sessions[token] = {
-    apiKey, clientId, username, isWarehouse,
+    apiKey, clientId, username, isWarehouse, demo,
     clients,    // [{ ID, Name }] for warehouse users
     warehouses, // [{ ID, Name }] for all users
     expiresAt: Date.now() + SESSION_TTL_MS
@@ -263,6 +264,38 @@ async function login(req, res) {
   }
 }
 
+// POST /api/demo-login
+// Creates a read-only demo session — no Mintsoft credentials, no API key.
+// Only available when DEMO_MODE is enabled on the deployment.
+function demoLogin(req, res) {
+  if (!process.env.DEMO_MODE) return res.json(404, { error: 'Not found' });
+
+  // Warehouse persona: sees every demo client + the client picker.
+  const token = createSession(
+    null,                 // apiKey — none; demo never calls Mintsoft
+    null,                 // clientId — warehouse user is not locked to one client
+    'Demo User',
+    true,                 // isWarehouse
+    DEMO_CLIENTS,         // clients [{ ID, Name }]
+    [DEMO_WAREHOUSE],     // warehouses [{ ID, Name }]
+    true,                 // demo
+  );
+
+  res.writeHead(200, {
+    'Content-Type': 'application/json',
+    'Set-Cookie':   `session=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}; Path=/`
+  });
+  res.end(JSON.stringify({
+    success:     true,
+    demo:        true,
+    username:    'Demo User',
+    clientId:    null,
+    isWarehouse: true,
+    clients:     DEMO_CLIENTS,
+    warehouses:  [DEMO_WAREHOUSE],
+  }));
+}
+
 async function triggerBackgroundSync({ apiKey, username, isWarehouse }) {
   try {
     // Check whether any previous sync has completed — if so, run incremental
@@ -300,9 +333,10 @@ function me(req, res) {
     username:    session.username,
     clientId:    session.clientId,
     isWarehouse: session.isWarehouse || false,
+    demo:        session.demo        || false,
     clients:     session.clients     || [],
     warehouses:  session.warehouses  || []
   });
 }
 
-module.exports = { login, logout, me, getSession, requireSession };
+module.exports = { login, demoLogin, logout, me, getSession, requireSession };

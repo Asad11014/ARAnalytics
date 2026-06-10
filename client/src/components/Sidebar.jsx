@@ -360,9 +360,9 @@ export default function Sidebar() {
       <div className="flex-shrink-0 px-4 py-3 border-t border-brand-border space-y-2">
         <div className="font-mono text-[11px] text-ink-muted">
           <strong className="block text-ink text-xs mb-0.5 truncate">{session?.username}</strong>
-          {session?.isWarehouse ? 'Warehouse user' : 'Client user'}
+          {session?.demo ? 'Demo mode' : session?.isWarehouse ? 'Warehouse user' : 'Client user'}
         </div>
-        {session?.isWarehouse && <SyncButton />}
+        {session?.isWarehouse && !session?.demo && <SyncButton />}
         <button onClick={logout}
           className="w-full border border-brand-border rounded text-ink-muted font-mono text-[11px] py-1.5 hover:border-danger hover:text-danger transition-colors bg-transparent cursor-pointer">
           Sign Out
