@@ -1,14 +1,11 @@
 # Render Blueprint — pf-forecaster DEMO deployment
-# Provisions a public, read-only demo: a Node web service + its OWN Postgres,
-# seeded with sample data on boot. This database is separate from production, so
-# nothing in the demo can ever affect real client data.
+# A public, read-only demo: a Node web service seeded with sample data on boot.
+# The database is a separate, free external Postgres (e.g. Neon), so nothing in
+# the demo can ever touch real production data.
+#
+# DATABASE_URL is set manually in the Render dashboard (sync: false) — paste the
+# Neon connection string there. It MUST be the demo DB, never production.
 # Docs: https://render.com/docs/blueprint-spec
-
-databases:
-  - name: pf-demo-db
-    plan: free
-    databaseName: pf_demo
-    user: pf_demo
 
 services:
   - type: web
@@ -22,15 +19,13 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22.13.0"
-      # Enables SSL for the Render-managed Postgres connection (see server/db.js).
+      # Enables SSL for the Postgres connection (see server/db.js). Neon requires SSL.
       - key: NODE_ENV
         value: production
       # Turns this deployment into the demo: seeds sample data on boot, exposes
       # /api/demo-login, disables live sync / Mintsoft proxy, blocks all writes.
       - key: DEMO_MODE
         value: "true"
-      # Wired automatically from the database above — never points at production.
+      # Set in the dashboard — paste the external (Neon) demo connection string.
       - key: DATABASE_URL
-        fromDatabase:
-          name: pf-demo-db
-          property: connectionString
+        sync: false
