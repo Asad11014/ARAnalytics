@@ -91,7 +91,7 @@ function ClientVolumePanel({ warehouseId }) {
   const chartOpts = {
     chart: { type: 'bar', background: 'transparent', toolbar: { show: false }, animations: { speed: 400 } },
     plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '55%' } },
-    colors: ['#1f22ac'],
+    colors: ['#2D4270'],
     legend: { show: false },
     xaxis: {
       categories: top12.map(r => r.client_name),
@@ -357,7 +357,7 @@ export default function WarehouseDashboard() {
       const stackOpts = {
         chart: { type: 'bar', background: 'transparent', toolbar: { show: false }, stacked: true, animations: { speed: 400 } },
         plotOptions: { bar: { horizontal: true, borderRadius: 2, barHeight: '60%' } },
-        colors: ['#1f22ac', '#c79a51', '#16a34a', '#6b7280'],
+        colors: ['#2D4270', '#c9a24b', '#16a34a', '#6b7280'],
         legend: { position: 'bottom', fontFamily: FONTS.mono, fontSize: '11px' },
         xaxis: {
           categories: filtered.map(r => r.name),
@@ -409,7 +409,7 @@ export default function WarehouseDashboard() {
         chart: { type: 'area', background: 'transparent', toolbar: { show: false }, zoom: { enabled: false }, animations: { speed: 400 } },
         stroke: { curve: 'smooth', width: 2 },
         fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.18, opacityTo: 0.02 } },
-        colors: ['#1f22ac'],
+        colors: ['#2D4270'],
         xaxis: { categories: trend.map(w => w.week), axisBorder: { show: false }, axisTicks: { show: false },
           labels: { style: { colors: '#6b7280', fontFamily: FONTS.mono, fontSize: '10px' }, rotate: -30 } },
         yaxis: { labels: { style: { colors: '#6b7280', fontFamily: FONTS.mono, fontSize: '11px' } } },
@@ -435,7 +435,7 @@ export default function WarehouseDashboard() {
       const opts = {
         chart: { type: 'bar', background: 'transparent', toolbar: { show: false }, animations: { speed: 400 } },
         plotOptions: { bar: { horizontal: true, borderRadius: 4, barHeight: '55%', distributed: true } },
-        colors: filtered.map(c => c.status === 'critical' ? '#e03355' : c.status === 'attention' ? '#c79a51' : '#16a34a'),
+        colors: filtered.map(c => c.status === 'critical' ? '#e03355' : c.status === 'attention' ? '#c9a24b' : '#16a34a'),
         legend: { show: false },
         xaxis: {
           categories: filtered.map(c => c.name),
@@ -536,14 +536,14 @@ export default function WarehouseDashboard() {
     const sh  = data?.stockHealth || {}
     const ordersDeltaC = pct(ck.orders30, ck.ordersPrev)
     const unitsDeltaC  = pct(ck.units30,  ck.unitsPrev)
-    const HEALTH_COLORS = ['#16a34a', '#e03355', '#c79a51', '#9ca3af', '#b91c1c']
+    const HEALTH_COLORS = ['#16a34a', '#e03355', '#c9a24b', '#9ca3af', '#b91c1c']
     const HEALTH_LABELS = ['Healthy', 'Low Stock', 'Overstock', 'Dead Stock', 'Out of Stock']
     const salesTrendC = data?.salesTrend || []
     const lineOptsC = {
       chart: { type: 'area', background: 'transparent', toolbar: { show: false }, zoom: { enabled: false }, animations: { speed: 600 } },
       stroke: { curve: 'smooth', width: 2 },
       fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.2, opacityTo: 0.02 } },
-      colors: ['#1f22ac'],
+      colors: ['#2D4270'],
       xaxis: { type: 'datetime', categories: salesTrendC.map(d => d.date), axisBorder: { show: false }, axisTicks: { show: false },
         labels: { style: { colors: '#6b7280', fontFamily: FONTS.mono, fontSize: '11px' } } },
       yaxis: { labels: { style: { colors: '#6b7280', fontFamily: FONTS.mono, fontSize: '11px' } } },

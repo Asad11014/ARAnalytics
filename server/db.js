@@ -1,8 +1,13 @@
 const { Pool } = require('pg');
 
+// Enable SSL for any remote host (Neon, Render, etc.); skip it only for a
+// local Postgres. Managed hosts like Neon require SSL even from local dev.
+const DB_URL   = process.env.DATABASE_URL || '';
+const IS_LOCAL = /@(localhost|127\.0\.0\.1)[:/]/.test(DB_URL);
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  connectionString: DB_URL,
+  ssl: IS_LOCAL ? false : { rejectUnauthorized: false },
   max: 10,
   idleTimeoutMillis: 30_000,
 });

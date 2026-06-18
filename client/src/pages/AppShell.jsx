@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useSession } from '../context/SessionContext'
 import { UIProvider, useUI } from '../context/UIContext'
 import Sidebar from '../components/Sidebar'
+import pfLogo from '../assets/pf-logo.png'
 import Dashboard   from './Dashboard'
 import Calendar    from './Calendar'
 import Quotations  from './Quotations'
@@ -25,6 +26,9 @@ import Profitability from './financial/Profitability'
 // Analytics
 import BestSellers from './analytics/BestSellers'
 import SalesTrend  from './analytics/SalesTrend'
+
+// Client Hub placeholder pages (built out in later phases)
+import Placeholder from './Placeholder'
 
 function WarehouseOnly({ children }) {
   const { session } = useSession()
@@ -71,28 +75,37 @@ function AppShellLayout() {
   if (!session) return null
 
   return (
-    <div className="flex min-h-screen bg-brand-bg">
+    <div className="h-screen flex flex-col bg-brand-bg overflow-hidden">
 
-      {/* Mobile top bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 h-12 bg-brand-surface border-b border-brand-border flex items-center px-4 z-30 gap-3">
-        <button onClick={openSidebar} aria-label="Open menu"
-          className="w-8 h-8 flex items-center justify-center text-ink-muted hover:text-ink hover:bg-brand-surface2 rounded transition-colors">
-          <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
-            <rect y="0"  width="18" height="2" rx="1" fill="currentColor"/>
-            <rect y="6"  width="18" height="2" rx="1" fill="currentColor"/>
-            <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
-          </svg>
-        </button>
-        <span className="font-extrabold text-sm text-ink">ARAnalytics</span>
-      </div>
+      {/* Full-width top header — spans the entire page */}
+      <header className="flex-shrink-0 h-16 bg-white flex items-center justify-between px-4 sm:px-6 z-50">
+        <div className="flex items-center gap-3 min-w-0">
+          <button onClick={() => (sidebarOpen ? closeSidebar() : openSidebar())} aria-label="Toggle menu"
+            className="lg:hidden w-8 h-8 flex items-center justify-center text-navy hover:bg-brand-surface2 rounded transition-colors flex-shrink-0">
+            <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
+              <rect y="0"  width="18" height="2" rx="1" fill="currentColor"/>
+              <rect y="6"  width="18" height="2" rx="1" fill="currentColor"/>
+              <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
+            </svg>
+          </button>
+          <img src={pfLogo} alt="Premium Fulfilment" className="h-11 w-auto" />
+        </div>
+        <a href="https://wms.premiumfulfilment.co.uk" target="_blank" rel="noopener noreferrer"
+          className="font-mono text-[11px] sm:text-sm text-navy hover:text-gold underline underline-offset-4 decoration-navy/30 hover:decoration-gold transition-colors whitespace-nowrap flex-shrink-0">
+          wms.premiumfulfilment.co.uk <span aria-hidden="true">↗</span>
+        </a>
+      </header>
 
-      {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/40 z-40 lg:hidden" onClick={closeSidebar} />
-      )}
+      {/* Body: sidebar + main content */}
+      <div className="flex-1 min-h-0 relative">
 
-      <Sidebar />
+        {sidebarOpen && (
+          <div className="fixed inset-x-0 bottom-0 top-16 bg-black/40 z-30 lg:hidden" onClick={closeSidebar} />
+        )}
 
-      <main className="lg:ml-60 flex-1 min-h-screen flex flex-col pt-12 lg:pt-0 min-w-0 overflow-x-hidden">
+        <Sidebar />
+
+        <main className="h-full lg:ml-60 flex flex-col min-w-0 overflow-x-hidden">
         {session.demo && <DemoBanner />}
         <Routes>
           <Route index element={<Dashboard />} />
@@ -118,13 +131,40 @@ function AppShellLayout() {
           <Route path="analytics/best-sellers"  element={<BestSellers />} />
           <Route path="analytics/sales-trend"   element={<SalesTrend />} />
 
+          {/* ── PF Client Hub routes ── */}
+          {/* Stock Analytics */}
+          <Route path="stock/reports"           element={<Placeholder title="Reports" blurb="Curated stock reports — a focused set of the most useful inventory views for your products." icon="📊" />} />
+          <Route path="stock/inventory-planner" element={<Placeholder title="Inventory Planner" blurb="Demand forecasting and reorder planning to keep your best-sellers in stock without over-ordering." icon="📦" />} />
+          <Route path="stock/excess"            element={<Placeholder title="Excess Stock" blurb="Surface slow-moving and overstocked SKUs so you can act on tied-up capital." icon="🗄️" />} />
+
+          {/* Returns */}
+          <Route path="returns/book"            element={<Placeholder title="Book a Return" blurb="Raise a return with Premium Fulfilment — details are sent straight through to Mintsoft Returns." icon="📝" />} />
+          <Route path="returns/collection"      element={<Placeholder title="Request a Collection" blurb="Request a collection from us via a simple form." icon="🚚" />} />
+          <Route path="returns/history"         element={<Placeholder title="Return History" blurb="See all of your past returns in one place." icon="📋" />} />
+
+          {/* Shipping Calculator */}
+          <Route path="shipping/international"  element={<Quotations />} />
+          <Route path="shipping/pallets"        element={<Placeholder title="Pallets & Arctic Pricing" blurb="Request pallet and temperature-controlled (Arctic) shipping pricing from us." icon="🧊" />} />
+          <Route path="shipping/freight"        element={<Placeholder title="Freight Forwarding" blurb="Submit a freight forwarding request and we’ll come back to you with options." icon="🛫" />} />
+          <Route path="shipping/history"        element={<MyQuotes />} />
+
+          {/* Invoice Analysis */}
+          <Route path="invoice/overview"        element={<Profitability />} />
+          <Route path="invoice/storage"         element={<Placeholder title="Storage Calculator" blurb="A clear CBM / volumetric breakdown of your storage costs." icon="📐" />} />
+          <Route path="invoice/bespoke"         element={<Placeholder title="Bespoke Calculations" blurb="Bespoke cost breakdowns — e.g. bundle and assembly costs — laid out clearly." icon="🧮" />} />
+
+          {/* Website SEO + Help */}
+          <Route path="seo"  element={<Placeholder title="Website SEO" blurb="Pricing tiers and details for our website &amp; SEO services. Register your interest for more info." icon="🖥️" />} />
+          <Route path="help" element={<Placeholder title="Help Guides" blurb="How-to guides: sourcing, importing, using the WMS, setting up &amp; SEO-ing a website, selling on Amazon, packaging, and inventory planning." icon="❓" />} />
+
           {/* Redirect old flat URLs to new paths */}
           <Route path="reports/best-sellers"  element={<Navigate to="/app/analytics/best-sellers" replace />} />
           <Route path="reports/sales-trend"   element={<Navigate to="/app/analytics/sales-trend" replace />} />
 
           <Route path="*" element={<Navigate to="/app" replace />} />
         </Routes>
-      </main>
+        </main>
+      </div>
     </div>
   )
 }

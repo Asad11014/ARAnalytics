@@ -4,9 +4,9 @@
 
 /* ── Brand tokens (override here per tenant in the future) ── */
 :root {
-  --color-primary:       #1f22ac;
-  --color-primary-hover: #2529c9;
-  --color-gold:          #c79a51;
+  --color-primary:       #2D4270;
+  --color-primary-hover: #3a5288;
+  --color-gold:          #c9a24b;
   --color-bg:            #f5f6fa;
   --color-surface:       #ffffff;
   --color-surface2:      #eef0f7;
@@ -32,7 +32,7 @@ body {
   font-family: 'DM Mono', monospace !important;
   font-size: 12px !important;
   border: 1px solid var(--color-border) !important;
-  box-shadow: 0 4px 16px rgba(31,34,172,0.10) !important;
+  box-shadow: 0 4px 16px rgba(45,66,112,0.10) !important;
 }
 .apexcharts-tooltip-title {
   font-family: 'Syne', sans-serif !important;

@@ -12,7 +12,7 @@ const STATUS_VARIANT = { healthy: 'success', watchlist: 'warning', critical: 'da
 const FONTS = { mono: '"DM Mono", monospace', sans: 'Syne, sans-serif' }
 
 function ScoreBar({ score }) {
-  const color = score >= 70 ? '#16a34a' : score >= 40 ? '#c79a51' : '#e03355'
+  const color = score >= 70 ? '#16a34a' : score >= 40 ? '#c9a24b' : '#e03355'
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 bg-brand-surface2 rounded-full overflow-hidden">
@@ -46,7 +46,7 @@ export default function HealthScore() {
 
   const donutOpts = meta ? {
     chart: { type: 'donut', background: 'transparent', animations: { speed: 400 } },
-    colors: ['#16a34a', '#c79a51', '#e03355'],
+    colors: ['#16a34a', '#c9a24b', '#e03355'],
     labels: ['Healthy', 'Watchlist', 'Critical'],
     plotOptions: { pie: { donut: { size: '65%' } } },
     legend: { position: 'bottom', fontFamily: FONTS.mono, fontSize: '11px' },

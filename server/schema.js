@@ -305,27 +305,6 @@ async function ensureCoreSchema() {
     )
   `);
 
-  // ── Batches (pick batches) ────────────────────────────────────────────────
-
-  await query(`
-    CREATE TABLE IF NOT EXISTS batches (
-      id                    INTEGER PRIMARY KEY,
-      warehouse_id          INTEGER REFERENCES warehouses(id),
-      client_id             INTEGER REFERENCES clients(id),
-      reference             TEXT,
-      number_of_orders      INTEGER DEFAULT 0,
-      picking_started       BOOLEAN DEFAULT FALSE,
-      picking_complete      BOOLEAN DEFAULT FALSE,
-      despatched            BOOLEAN DEFAULT FALSE,
-      items_skipped         BOOLEAN DEFAULT FALSE,
-      assigned_user         TEXT,
-      created_at            TIMESTAMPTZ,
-      last_pick_interaction TIMESTAMPTZ,
-      updated_at            TIMESTAMPTZ,
-      synced_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
   // ── Sync tracking ─────────────────────────────────────────────────────────
 
   await query(`
@@ -427,7 +406,6 @@ async function ensureCoreSchema() {
   await query(`CREATE INDEX IF NOT EXISTS asns_estimated_delivery_idx       ON asns (estimated_delivery)`);
   await query(`CREATE INDEX IF NOT EXISTS asns_updated_at_idx              ON asns (updated_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS invoices_client_date_idx          ON invoices (client_id, invoice_date DESC)`);
-  await query(`CREATE INDEX IF NOT EXISTS batches_warehouse_created_idx     ON batches (warehouse_id, created_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS sync_jobs_started_at_idx          ON sync_jobs (started_at DESC)`);
 }
 

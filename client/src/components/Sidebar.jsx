@@ -2,12 +2,12 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useSession } from '../context/SessionContext'
 import { useUI }      from '../context/UIContext'
-import { TOP_LINKS, REPORT_GROUPS, QUOTE_ITEMS } from '../lib/nav'
+import { TOP_LINKS, REPORT_GROUPS, QUOTE_ITEMS, CLIENT_NAV } from '../lib/nav'
 import clsx from 'clsx'
 
 const BADGE = {
-  new:  'bg-primary/10 text-primary font-bold',
-  soon: 'bg-brand-surface2 text-ink-muted',
+  new:  'bg-gold/20 text-gold font-bold',
+  soon: 'bg-white/10 text-white/50',
 }
 
 function SyncButton() {
@@ -101,14 +101,14 @@ function SyncButton() {
 
   if (phase === 'syncing') {
     return (
-      <div className="w-full border border-primary rounded font-mono text-[11px] py-1.5 px-2 text-primary bg-primary/5 space-y-1">
+      <div className="w-full border border-gold rounded font-mono text-[11px] py-1.5 px-2 text-gold bg-gold/10 space-y-1">
         <div className="flex items-center gap-1.5">
-          <span className="inline-block w-3 h-3 border border-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <span className="inline-block w-3 h-3 border border-gold border-t-transparent rounded-full animate-spin flex-shrink-0" />
           <span className="truncate">{stepLabel}</span>
-          <span className="ml-auto text-primary/60 flex-shrink-0">{fmtElapsed(elapsed)}</span>
+          <span className="ml-auto text-gold/70 flex-shrink-0">{fmtElapsed(elapsed)}</span>
         </div>
-        <div className="w-full bg-primary/20 rounded-full h-0.5 overflow-hidden">
-          <div className="h-full bg-primary rounded-full animate-pulse" style={{ width: '60%' }} />
+        <div className="w-full bg-gold/20 rounded-full h-0.5 overflow-hidden">
+          <div className="h-full bg-gold rounded-full animate-pulse" style={{ width: '60%' }} />
         </div>
       </div>
     )
@@ -121,9 +121,9 @@ function SyncButton() {
               : isLoading           ? '⟳ Sync Data'
               : '⟳ Initial Sync'
   const cls   = phase === 'done'    ? 'border-success text-success'
-              : phase === 'partial' ? 'border-warning text-warning'
+              : phase === 'partial' ? 'border-gold text-gold'
               : phase === 'error'   ? 'border-danger text-danger'
-              : 'border-brand-border text-ink-muted hover:border-primary hover:text-primary'
+              : 'border-white/20 text-white/80 hover:border-gold hover:text-gold'
 
   return (
     <div className="space-y-1">
@@ -138,11 +138,104 @@ function SyncButton() {
       {everSynced && phase === 'idle' && (
         <button
           onClick={() => firSync(true)}
-          className="w-full font-mono text-[10px] text-ink-dim hover:text-ink-muted transition-colors text-center py-0.5"
+          className="w-full font-mono text-[10px] text-white/40 hover:text-white/70 transition-colors text-center py-0.5"
         >
           ↺ Full resync
         </button>
       )}
+    </div>
+  )
+}
+
+// Recursively flatten a group's leaf routes (for active-state detection).
+function flattenRoutes(node) {
+  if (node.items) return node.items.flatMap(flattenRoutes)
+  return node.to ? [node.to] : []
+}
+
+// A single client-nav node — either a leaf link or a (possibly nested) group.
+function NavNode({ node, closeSidebar, depth }) {
+  if (node.items) return <CollapsibleGroup group={node} closeSidebar={closeSidebar} depth={depth} />
+  return (
+    <NavLink
+      to={node.to}
+      onClick={closeSidebar}
+      style={{ paddingLeft: `${12 + depth * 16}px` }}
+      className={({ isActive }) => clsx(
+        'flex items-center gap-2 pr-3 py-1.5 text-[12px] transition-all no-underline mx-2 rounded border-l-2',
+        isActive
+          ? 'bg-white/10 text-white font-semibold border-gold'
+          : 'text-white/70 hover:bg-white/5 hover:text-white border-transparent'
+      )}
+    >
+      <span className="text-sm flex-shrink-0">{node.icon}</span>
+      <span className="flex-1 truncate">{node.clientLabel || node.label}</span>
+    </NavLink>
+  )
+}
+
+// A collapsible nav group for the Client Hub menu (self-managed open state).
+// Supports nesting (e.g. Stock Analytics → Reports → report pages).
+function CollapsibleGroup({ group, closeSidebar, depth = 0 }) {
+  const location = useLocation()
+  const [open, setOpen] = useState(() => flattenRoutes(group).some(to => location.pathname.startsWith(to)))
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{ paddingLeft: `${16 + depth * 12}px` }}
+        className="w-full flex items-center gap-2.5 pr-3 py-2 text-left transition-colors hover:bg-white/5 group select-none"
+      >
+        <span className="text-base w-5 text-center flex-shrink-0">{group.icon}</span>
+        <span className={clsx(
+          'flex-1 font-mono uppercase tracking-widest font-bold',
+          depth === 0 ? 'text-[10px]' : 'text-[9px]',
+          open ? 'text-gold' : 'text-white/50 group-hover:text-white'
+        )}>
+          {group.label}
+        </span>
+        <span className={clsx('font-mono text-[10px] text-white/40 transition-transform duration-200', open && 'rotate-90')}>
+          ▶
+        </span>
+      </button>
+
+      <div className={clsx(
+        'overflow-hidden transition-all duration-200',
+        open ? 'max-h-[900px] opacity-100' : 'max-h-0 opacity-0'
+      )}>
+        {group.items.map((node, i) => (
+          <NavNode key={node.to || node.id || i} node={node} closeSidebar={closeSidebar} depth={depth + 1} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// PF Client Hub navigation — flat links + collapsible groups (clients only).
+function ClientNav({ closeSidebar }) {
+  return (
+    <div className="space-y-0.5">
+      {CLIENT_NAV.map(entry => entry.type === 'link' ? (
+        <div key={entry.to} className="px-2">
+          <NavLink
+            to={entry.to}
+            end={entry.exact}
+            onClick={closeSidebar}
+            className={({ isActive }) => clsx(
+              'flex items-center gap-2.5 px-3 py-2 rounded text-[13px] font-medium transition-all no-underline border-l-2',
+              isActive
+                ? 'bg-white/10 text-white font-semibold border-gold'
+                : 'text-white/70 hover:bg-white/5 hover:text-white border-transparent'
+            )}
+          >
+            <span className="text-base w-5 text-center flex-shrink-0">{entry.icon}</span>
+            {entry.label}
+          </NavLink>
+        </div>
+      ) : (
+        <CollapsibleGroup key={entry.id} group={entry} closeSidebar={closeSidebar} />
+      ))}
     </div>
   )
 }
@@ -175,28 +268,11 @@ export default function Sidebar() {
 
   return (
     <aside className={clsx(
-      'w-60 bg-brand-surface border-r border-brand-border flex flex-col fixed top-0 left-0 bottom-0 z-50',
+      'w-60 bg-navy border-r border-navy-dark flex flex-col fixed top-16 left-0 bottom-0 z-40',
       'transition-transform duration-200 ease-in-out',
       'lg:translate-x-0',
       sidebarOpen ? 'translate-x-0' : '-translate-x-full'
     )}>
-
-      {/* Logo */}
-      <div className="px-5 py-4 border-b-2 border-primary flex items-center gap-3 flex-shrink-0">
-        <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center text-white font-extrabold text-[11px] flex-shrink-0">
-          AR
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="font-extrabold text-sm text-ink leading-tight">ARAnalytics</div>
-          <div className="font-mono text-[9px] text-ink-muted tracking-widest uppercase mt-0.5">
-            3PL Intelligence
-          </div>
-        </div>
-        <button onClick={closeSidebar} aria-label="Close menu"
-          className="lg:hidden w-7 h-7 flex items-center justify-center text-ink-muted hover:text-ink hover:bg-brand-surface2 rounded transition-colors">
-          ✕
-        </button>
-      </div>
 
       {/* Scrollable middle */}
       <div className="flex-1 overflow-y-auto min-h-0 py-2">
@@ -204,9 +280,9 @@ export default function Sidebar() {
         {/* Warehouse selector */}
         {warehouses.length > 1 && (
           <div className="px-4 pt-1 pb-2">
-            <label className="block font-mono text-[9px] text-ink-dim uppercase tracking-widest mb-1">Warehouse</label>
+            <label className="block font-mono text-[9px] text-white/50 uppercase tracking-widest mb-1">Warehouse</label>
             <select value={warehouseId} onChange={e => setWarehouseId(e.target.value)}
-              className="w-full bg-brand-bg border border-brand-border rounded text-ink font-mono text-xs px-2 py-1.5 focus:outline-none focus:border-primary">
+              className="w-full bg-navy-dark border border-white/15 rounded text-white font-mono text-xs px-2 py-1.5 focus:outline-none focus:border-gold">
               <option value="">— Select —</option>
               {warehouses.map(w => <option key={w.ID} value={String(w.ID)}>{w.Name}</option>)}
             </select>
@@ -216,9 +292,9 @@ export default function Sidebar() {
         {/* Client selector */}
         {session?.isWarehouse && clients.length > 0 && (
           <div className="px-4 pb-2">
-            <label className="block font-mono text-[9px] text-ink-dim uppercase tracking-widest mb-1">Client</label>
+            <label className="block font-mono text-[9px] text-white/50 uppercase tracking-widest mb-1">Client</label>
             <select value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)}
-              className="w-full bg-brand-bg border border-brand-border rounded text-ink font-mono text-xs px-2 py-1.5 focus:outline-none focus:border-primary">
+              className="w-full bg-navy-dark border border-white/15 rounded text-white font-mono text-xs px-2 py-1.5 focus:outline-none focus:border-gold">
               <option value="">All clients</option>
               {[...clients].sort((a,b) => (a.Name||a.name).localeCompare(b.Name||b.name)).map(c => (
                 <option key={c.ID||c.id} value={String(c.ID||c.id)}>{c.Name||c.name}</option>
@@ -227,6 +303,12 @@ export default function Sidebar() {
           </div>
         )}
 
+        {/* ── Client Hub nav (client users only) ── */}
+        {!session?.isWarehouse && <ClientNav closeSidebar={closeSidebar} />}
+
+        {/* ── Warehouse Hub nav (warehouse users only) ── */}
+        {session?.isWarehouse && (
+        <>
         <div className="px-2 space-y-0.5">
           {/* Top-level standalone links */}
           {TOP_LINKS.map(link => (
@@ -238,8 +320,8 @@ export default function Sidebar() {
               className={({ isActive }) => clsx(
                 'flex items-center gap-2.5 px-3 py-2 rounded text-[13px] font-medium transition-all no-underline',
                 isActive
-                  ? 'bg-primary/10 text-primary font-semibold'
-                  : 'text-ink-muted hover:bg-brand-surface2 hover:text-ink'
+                  ? 'bg-white/10 text-white font-semibold border-l-2 border-gold'
+                  : 'text-white/70 hover:bg-white/5 hover:text-white border-l-2 border-transparent'
               )}
             >
               <span className="text-base w-5 text-center flex-shrink-0">{link.icon}</span>
@@ -248,22 +330,22 @@ export default function Sidebar() {
           ))}
         </div>
 
-        <div className="h-px bg-brand-border mx-4 my-2" />
+        <div className="h-px bg-white/10 mx-4 my-2" />
 
         {/* Quotes — collapsible section */}
         <div>
           <button
             onClick={() => setQuotesOpen(o => !o)}
-            className="w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors hover:bg-brand-surface2 group select-none"
+            className="w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors hover:bg-white/5 group select-none"
           >
             <span className="text-base w-5 text-center flex-shrink-0">💬</span>
             <span className={clsx(
               'flex-1 font-mono text-[10px] uppercase tracking-widest font-bold',
-              quotesOpen ? 'text-primary' : 'text-ink-dim group-hover:text-ink'
+              quotesOpen ? 'text-gold' : 'text-white/50 group-hover:text-white'
             )}>
               Quotes
             </span>
-            <span className={clsx('font-mono text-[10px] text-ink-dim transition-transform duration-200', quotesOpen && 'rotate-90')}>
+            <span className={clsx('font-mono text-[10px] text-white/40 transition-transform duration-200', quotesOpen && 'rotate-90')}>
               ▶
             </span>
           </button>
@@ -278,10 +360,10 @@ export default function Sidebar() {
                 to={item.to}
                 onClick={closeSidebar}
                 className={({ isActive }) => clsx(
-                  'flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-all no-underline mx-2 rounded',
+                  'flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-all no-underline mx-2 rounded border-l-2',
                   isActive
-                    ? 'bg-primary/10 text-primary font-semibold'
-                    : 'text-ink-muted hover:bg-brand-surface2 hover:text-ink'
+                    ? 'bg-white/10 text-white font-semibold border-gold'
+                    : 'text-white/70 hover:bg-white/5 hover:text-white border-transparent'
                 )}
               >
                 <span className="text-sm flex-shrink-0">{item.icon}</span>
@@ -291,22 +373,22 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <div className="h-px bg-brand-border mx-4 my-2" />
+        <div className="h-px bg-white/10 mx-4 my-2" />
 
         {/* Reports — single collapsible section */}
         <div>
           <button
             onClick={() => setReportsOpen(o => !o)}
-            className="w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors hover:bg-brand-surface2 group select-none"
+            className="w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors hover:bg-white/5 group select-none"
           >
             <span className="text-base w-5 text-center flex-shrink-0">📊</span>
             <span className={clsx(
               'flex-1 font-mono text-[10px] uppercase tracking-widest font-bold',
-              reportsOpen ? 'text-primary' : 'text-ink-dim group-hover:text-ink'
+              reportsOpen ? 'text-gold' : 'text-white/50 group-hover:text-white'
             )}>
               Reports
             </span>
-            <span className={clsx('font-mono text-[10px] text-ink-dim transition-transform duration-200', reportsOpen && 'rotate-90')}>
+            <span className={clsx('font-mono text-[10px] text-white/40 transition-transform duration-200', reportsOpen && 'rotate-90')}>
               ▶
             </span>
           </button>
@@ -319,7 +401,7 @@ export default function Sidebar() {
               <div key={group.id}>
                 {/* Sub-category label */}
                 <div className="px-4 pt-2 pb-0.5">
-                  <span className="font-mono text-[8px] uppercase tracking-[0.15em] text-ink-dim font-bold">
+                  <span className="font-mono text-[8px] uppercase tracking-[0.15em] text-white/40 font-bold">
                     {group.label}
                   </span>
                 </div>
@@ -331,10 +413,10 @@ export default function Sidebar() {
                     to={item.to}
                     onClick={closeSidebar}
                     className={({ isActive }) => clsx(
-                      'flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-all no-underline mx-2 rounded',
+                      'flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-all no-underline mx-2 rounded border-l-2',
                       isActive
-                        ? 'bg-primary/10 text-primary font-semibold'
-                        : 'text-ink-muted hover:bg-brand-surface2 hover:text-ink'
+                        ? 'bg-white/10 text-white font-semibold border-gold'
+                        : 'text-white/70 hover:bg-white/5 hover:text-white border-transparent'
                     )}
                   >
                     <span className="text-sm flex-shrink-0">{item.icon}</span>
@@ -351,23 +433,25 @@ export default function Sidebar() {
 
                 {/* Divider between groups, but not after the last one */}
                 {gi < visibleGroups.length - 1 && (
-                  <div className="h-px bg-brand-border mx-4 mt-2" />
+                  <div className="h-px bg-white/10 mx-4 mt-2" />
                 )}
               </div>
             ))}
           </div>
         </div>
+        </>
+        )}
       </div>
 
       {/* Footer — always pinned */}
-      <div className="flex-shrink-0 px-4 py-3 border-t border-brand-border space-y-2">
-        <div className="font-mono text-[11px] text-ink-muted">
-          <strong className="block text-ink text-xs mb-0.5 truncate">{session?.username}</strong>
+      <div className="flex-shrink-0 px-4 py-3 border-t border-white/10 space-y-2">
+        <div className="font-mono text-[11px] text-white/60">
+          <strong className="block text-white text-xs mb-0.5 truncate">{session?.username}</strong>
           {session?.demo ? 'Demo mode' : session?.isWarehouse ? 'Warehouse user' : 'Client user'}
         </div>
         {session?.isWarehouse && !session?.demo && <SyncButton />}
         <button onClick={logout}
-          className="w-full border border-brand-border rounded text-ink-muted font-mono text-[11px] py-1.5 hover:border-danger hover:text-danger transition-colors bg-transparent cursor-pointer">
+          className="w-full border border-white/20 rounded text-white/70 font-mono text-[11px] py-1.5 hover:border-danger hover:text-danger transition-colors bg-transparent cursor-pointer">
           Sign Out
         </button>
       </div>

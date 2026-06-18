@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useSession } from '../context/SessionContext'
+import pfLogo from '../assets/pf-logo-large.png'
 
 export default function Login() {
   const [username, setUsername] = useState('')
@@ -41,23 +42,18 @@ export default function Login() {
       className="min-h-screen flex items-center justify-center"
       style={{
         background: '#f5f6fa',
-        backgroundImage: 'linear-gradient(rgba(31,34,172,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(31,34,172,0.04) 1px, transparent 1px)',
+        backgroundImage: 'linear-gradient(rgba(45,66,112,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(45,66,112,0.04) 1px, transparent 1px)',
         backgroundSize: '40px 40px'
       }}
     >
       <div className="bg-brand-surface border border-brand-border rounded-xl shadow-modal w-full max-w-[420px] mx-4 p-10">
 
         {/* Logo */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-11 h-11 bg-primary rounded-lg flex items-center justify-center text-white font-extrabold text-base flex-shrink-0">
-            AR
-          </div>
-          <div>
-            <h1 className="text-lg font-extrabold text-ink leading-tight">ARAnalytics</h1>
-            <p className="font-mono text-[10px] text-ink-muted tracking-wide mt-0.5 uppercase">
-              Powered by Mintsoft
-            </p>
-          </div>
+        <div className="flex flex-col items-center text-center mb-8">
+          <img src={pfLogo} alt="Premium Fulfilment" className="h-20 w-auto mb-3" />
+          <p className="font-mono text-[10px] text-ink-muted tracking-[0.2em] uppercase">
+            Analytics · Powered by Mintsoft
+          </p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">

@@ -54,7 +54,7 @@ export default function SalesTrend() {
     m.declining || 0, m.new || 0, result.rows?.filter(r => r.trend === 'stopped').length || 0] : []
   const donutOptions = {
     chart: { type: 'donut', background: 'transparent', animations: { speed: 400 } },
-    colors: ['#16a34a', '#6b7280', '#e03355', '#1f22ac', '#9ca3af'],
+    colors: ['#16a34a', '#6b7280', '#e03355', '#2D4270', '#9ca3af'],
     labels: ['Growing', 'Stable', 'Declining', 'New', 'Stopped'],
     plotOptions: { pie: { donut: { size: '65%' } } },
     legend: { position: 'bottom', fontFamily: CHART_FONTS.mono, fontSize: '11px' },

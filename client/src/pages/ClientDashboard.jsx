@@ -10,7 +10,7 @@ import Badge         from '../components/Badge'
 import MiniCalendar  from '../components/MiniCalendar'
 
 const CHART_FONTS = { sans: 'Syne, sans-serif', mono: '"DM Mono", monospace' }
-const HEALTH_COLORS = ['#16a34a', '#e03355', '#c79a51', '#9ca3af', '#b91c1c']
+const HEALTH_COLORS = ['#16a34a', '#e03355', '#c9a24b', '#9ca3af', '#b91c1c']
 const HEALTH_LABELS = ['Healthy', 'Low Stock', 'Overstock', 'Dead Stock', 'Out of Stock']
 
 function pct(a, b) {
@@ -55,7 +55,7 @@ export default function ClientDashboard() {
     chart: { type: 'area', background: 'transparent', toolbar: { show: false }, zoom: { enabled: false }, animations: { speed: 600 } },
     stroke: { curve: 'smooth', width: 2 },
     fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.2, opacityTo: 0.02 } },
-    colors: ['#1f22ac'],
+    colors: ['#2D4270'],
     xaxis: {
       type: 'datetime',
       categories: salesTrend.map(d => d.date),

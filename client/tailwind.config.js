@@ -4,11 +4,18 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary:  { DEFAULT: '#1f22ac', hover: '#2529c9', light: 'rgba(31,34,172,0.08)' },
-        gold:     '#c79a51',
+        // Premium Fulfilment brand: deep navy + gold
+        primary:  { DEFAULT: '#2D4270', hover: '#3a5288', light: 'rgba(45,66,112,0.08)' },
+        gold:     { DEFAULT: '#c9a24b', hover: '#b88f3a' },
+        // navy palette for the sidebar
+        navy: {
+          DEFAULT: '#2D4270',
+          dark:    '#223257',
+          light:   '#3a5288',
+        },
         danger:   '#e03355',
         success:  '#16a34a',
-        warning:  '#c79a51',
+        warning:  '#c9a24b',
         // neutral surface palette
         brand: {
           bg:       '#f5f6fa',
@@ -32,9 +39,9 @@ export default {
         xl: '16px',
       },
       boxShadow: {
-        card: '0 1px 4px rgba(31,34,172,0.06), 0 0 0 1px #d8dbe8',
-        'card-hover': '0 4px 16px rgba(31,34,172,0.10), 0 0 0 1px #d8dbe8',
-        modal: '0 8px 40px rgba(31,34,172,0.14)',
+        card: '0 1px 4px rgba(45,66,112,0.06), 0 0 0 1px #d8dbe8',
+        'card-hover': '0 4px 16px rgba(45,66,112,0.10), 0 0 0 1px #d8dbe8',
+        modal: '0 8px 40px rgba(45,66,112,0.14)',
       }
     },
   },

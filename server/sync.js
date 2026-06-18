@@ -39,12 +39,24 @@ function ts(v) {
 async function paginate(path, apiKey, onPage) {
   let page = 1;
   let total = 0;
+  let prevFirstId = null;
   while (true) {
     const sep = path.includes('?') ? '&' : '?';
     const res = await mintsoftGet(`${path}${sep}Limit=${PAGE}&PageNo=${page}`, apiKey);
     if (res.status !== 200) throw new Error(`API ${res.status}: ${path}`);
     const batch = Array.isArray(res.body) ? res.body : [];
     if (batch.length === 0) break;
+
+    // Guard: some Mintsoft endpoints ignore PageNo/Limit and return the full set
+    // on every request. Detect the repeat (same first record as the previous page)
+    // and stop, otherwise we'd reprocess the same data up to the page cap.
+    const firstId = batch[0]?.ID ?? batch[0]?.Id ?? null;
+    if (firstId !== null && firstId === prevFirstId) {
+      console.warn(`[sync] ${path} ignores pagination — stopping after page ${page - 1}`);
+      break;
+    }
+    prevFirstId = firstId;
+
     await onPage(batch);
     total += batch.length;
     if (batch.length < PAGE) break;
@@ -534,41 +546,6 @@ async function syncAccruals(apiKey) {
   return count;
 }
 
-// ── Batches ───────────────────────────────────────────────────────────────────
-
-async function syncBatches(apiKey, warehouseIds) {
-  let count = 0;
-  for (const whId of warehouseIds) {
-    count += await paginate(`/api/Batch/List?WarehouseId=${whId}`, apiKey, async (batch) => {
-      for (const b of batch) {
-        const id = b.ID || b.Id;
-        if (!id) continue;
-        await query(
-          `INSERT INTO batches (id, warehouse_id, client_id, reference, number_of_orders,
-             picking_started, picking_complete, despatched, items_skipped, assigned_user,
-             created_at, last_pick_interaction, updated_at, synced_at)
-           VALUES ($1,$2,(SELECT id FROM clients WHERE id=$3 LIMIT 1),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
-           ON CONFLICT (id) DO UPDATE SET
-             number_of_orders=EXCLUDED.number_of_orders, picking_started=EXCLUDED.picking_started,
-             picking_complete=EXCLUDED.picking_complete, despatched=EXCLUDED.despatched,
-             items_skipped=EXCLUDED.items_skipped, assigned_user=EXCLUDED.assigned_user,
-             last_pick_interaction=EXCLUDED.last_pick_interaction,
-             updated_at=EXCLUDED.updated_at, synced_at=NOW()`,
-          [
-            id, b.WarehouseId || whId, b.ClientId || null, b.Reference || null,
-            b.NumberOfOrders || 0, b.PickingStarted || false, b.PickingComplete || false,
-            b.Despatched || false, b.ItemsSkipped || false,
-            b.AssignedUser || null, ts(b.Created), ts(b.LastPickInteraction),
-            ts(b.LastUpdated),
-          ]
-        );
-        count++;
-      }
-    });
-  }
-  return count;
-}
-
 // ── Orchestrators ─────────────────────────────────────────────────────────────
 
 async function runStep(label, fn, errors) {
@@ -631,9 +608,6 @@ async function runFullSync({ apiKey, triggeredBy = 'manual' } = {}) {
     await stepJob(jobId, 'Syncing invoices');
     total += await runStep('Invoices', () => syncInvoices(key), errors);
     total += await runStep('Accruals', () => syncAccruals(key), errors);
-
-    await stepJob(jobId, 'Syncing batches');
-    total += await runStep('Batches', () => syncBatches(key, whIds), errors);
 
     // Record sync time on session
     await query(

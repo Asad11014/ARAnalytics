@@ -55,7 +55,7 @@ function WarehouseView({ rows, meta, status, loading, onRun, onExport }) {
   const chartOpts = rows?.length ? {
     chart: { type: 'bar', background: 'transparent', toolbar: { show: false }, stacked: true, animations: { speed: 400 } },
     plotOptions: { bar: { horizontal: true, borderRadius: 2, barHeight: '60%' } },
-    colors: ['#1f22ac', '#c79a51', '#16a34a', '#6b7280', '#e03355', '#9ca3af'],
+    colors: ['#2D4270', '#c9a24b', '#16a34a', '#6b7280', '#e03355', '#9ca3af'],
     legend: { position: 'bottom', fontFamily: FONTS.mono, fontSize: '11px' },
     xaxis: {
       categories: rows.map(r => r.name),
@@ -205,7 +205,7 @@ function ClientView({ status, loading, invoiceTotals, onLoadPeriod }) {
 function ClientBreakdown({ breakdown, meta, period, status, loading, apiLimited, onBack, onExport }) {
   const donutOpts = breakdown ? {
     chart: { type: 'donut', background: 'transparent', animations: { speed: 400 } },
-    colors: ['#1f22ac', '#c79a51'],
+    colors: ['#2D4270', '#c9a24b'],
     labels: ['3PL Service Fees', 'Courier (pass-through)'],
     plotOptions: { pie: { donut: { size: '65%' } } },
     legend: { position: 'bottom', fontFamily: FONTS.mono, fontSize: '11px' },
