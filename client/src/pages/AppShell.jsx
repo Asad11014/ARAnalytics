@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { useSession } from '../context/SessionContext'
 import { UIProvider, useUI } from '../context/UIContext'
 import Sidebar from '../components/Sidebar'
-import pfLogo from '../assets/pf-logo.png'
+import pfLogo from '../assets/pf-hub-logo.png'
 import Dashboard   from './Dashboard'
 import Calendar    from './Calendar'
 import Quotations  from './Quotations'
@@ -27,8 +27,13 @@ import Profitability from './financial/Profitability'
 import BestSellers from './analytics/BestSellers'
 import SalesTrend  from './analytics/SalesTrend'
 
-// Client Hub placeholder pages (built out in later phases)
-import Placeholder from './Placeholder'
+// Client Hub
+import ReportsIndex    from './ReportsIndex'
+import ProductOverview from './stock/ProductOverview'
+import BookReturn      from './returns/BookReturn'
+import ReturnHistory   from './returns/ReturnHistory'
+import ReturnsHub      from './operations/ReturnsHub'
+import Placeholder     from './Placeholder'
 
 function WarehouseOnly({ children }) {
   const { session } = useSession()
@@ -88,7 +93,7 @@ function AppShellLayout() {
               <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
             </svg>
           </button>
-          <img src={pfLogo} alt="Premium Fulfilment" className="h-11 w-auto" />
+          <img src={pfLogo} alt="Premium Fulfilment Hub" className="h-8 sm:h-10 w-auto" />
         </div>
         <a href="https://wms.premiumfulfilment.co.uk" target="_blank" rel="noopener noreferrer"
           className="font-mono text-[11px] sm:text-sm text-navy hover:text-gold underline underline-offset-4 decoration-navy/30 hover:decoration-gold transition-colors whitespace-nowrap flex-shrink-0">
@@ -119,6 +124,7 @@ function AppShellLayout() {
           <Route path="inventory/aging"         element={<Aging />} />
           <Route path="inventory/velocity"      element={<Velocity />} />
           {/* Operations — warehouse users only */}
+          <Route path="operations/returns-hub"  element={<WarehouseOnly><ReturnsHub /></WarehouseOnly>} />
           <Route path="operations/fulfillment"  element={<WarehouseOnly><Fulfillment /></WarehouseOnly>} />
           <Route path="operations/eod-despatch" element={<WarehouseOnly><EodDespatch /></WarehouseOnly>} />
           <Route path="operations/pick-list"    element={<WarehouseOnly><PickList /></WarehouseOnly>} />
@@ -133,14 +139,15 @@ function AppShellLayout() {
 
           {/* ── PF Client Hub routes ── */}
           {/* Stock Analytics */}
-          <Route path="stock/reports"           element={<Placeholder title="Reports" blurb="Curated stock reports — a focused set of the most useful inventory views for your products." icon="📊" />} />
+          <Route path="stock/reports"           element={<ReportsIndex />} />
+          <Route path="stock/product-overview"  element={<ProductOverview />} />
           <Route path="stock/inventory-planner" element={<Placeholder title="Inventory Planner" blurb="Demand forecasting and reorder planning to keep your best-sellers in stock without over-ordering." icon="📦" />} />
           <Route path="stock/excess"            element={<Placeholder title="Excess Stock" blurb="Surface slow-moving and overstocked SKUs so you can act on tied-up capital." icon="🗄️" />} />
 
           {/* Returns */}
-          <Route path="returns/book"            element={<Placeholder title="Book a Return" blurb="Raise a return with Premium Fulfilment — details are sent straight through to Mintsoft Returns." icon="📝" />} />
+          <Route path="returns/book"            element={<BookReturn />} />
           <Route path="returns/collection"      element={<Placeholder title="Request a Collection" blurb="Request a collection from us via a simple form." icon="🚚" />} />
-          <Route path="returns/history"         element={<Placeholder title="Return History" blurb="See all of your past returns in one place." icon="📋" />} />
+          <Route path="returns/history"         element={<ReturnHistory />} />
 
           {/* Shipping Calculator */}
           <Route path="shipping/international"  element={<Quotations />} />

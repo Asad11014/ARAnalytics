@@ -10,7 +10,7 @@ const BADGE = {
   soon: 'bg-white/10 text-white/50',
 }
 
-function SyncButton() {
+function SyncButton({ incrementalOnly = false }) {
   const [phase,       setPhase]    = useState('idle')  // idle | syncing | done | partial | error
   const [stepLabel,   setStep]     = useState('')
   const [records,     setRecords]  = useState(null)
@@ -119,6 +119,7 @@ function SyncButton() {
               : phase === 'error'   ? '✕ Sync failed'
               : everSynced          ? '⟳ Sync Data'
               : isLoading           ? '⟳ Sync Data'
+              : incrementalOnly     ? '⟳ Sync Data'
               : '⟳ Initial Sync'
   const cls   = phase === 'done'    ? 'border-success text-success'
               : phase === 'partial' ? 'border-gold text-gold'
@@ -128,14 +129,14 @@ function SyncButton() {
   return (
     <div className="space-y-1">
       <button
-        onClick={() => firSync(!everSynced)}
+        onClick={() => firSync(incrementalOnly ? false : !everSynced)}
         disabled={isLoading}
         className={`w-full border rounded font-mono text-[11px] py-1.5 transition-colors bg-transparent cursor-pointer disabled:opacity-40 ${cls}`}
       >
         {label}
       </button>
-      {/* Full resync option — only shown after initial sync has been done */}
-      {everSynced && phase === 'idle' && (
+      {/* Full resync option — warehouse only, after initial sync has been done */}
+      {!incrementalOnly && everSynced && phase === 'idle' && (
         <button
           onClick={() => firSync(true)}
           className="w-full font-mono text-[10px] text-white/40 hover:text-white/70 transition-colors text-center py-0.5"
@@ -449,7 +450,7 @@ export default function Sidebar() {
           <strong className="block text-white text-xs mb-0.5 truncate">{session?.username}</strong>
           {session?.demo ? 'Demo mode' : session?.isWarehouse ? 'Warehouse user' : 'Client user'}
         </div>
-        {session?.isWarehouse && !session?.demo && <SyncButton />}
+        {!session?.demo && <SyncButton incrementalOnly={!session?.isWarehouse} />}
         <button onClick={logout}
           className="w-full border border-white/20 rounded text-white/70 font-mono text-[11px] py-1.5 hover:border-danger hover:text-danger transition-colors bg-transparent cursor-pointer">
           Sign Out

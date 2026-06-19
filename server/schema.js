@@ -103,10 +103,15 @@ async function ensureCoreSchema() {
       commodity_code              TEXT,
       packing_instructions        TEXT,
       subscription                BOOLEAN DEFAULT FALSE,
+      category                    TEXT,
+      supplier                    TEXT,
       updated_at                  TIMESTAMPTZ,
       synced_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // Backfill columns for existing deployments (no-op if already present).
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS category TEXT`);
+  await query(`ALTER TABLE products ADD COLUMN IF NOT EXISTS supplier TEXT`);
 
   await query(`
     CREATE TABLE IF NOT EXISTS product_stock_levels (
@@ -387,8 +392,32 @@ async function ensureCoreSchema() {
     )
   `);
 
+  // ── Returns ───────────────────────────────────────────────────────────────
+  // Shared workflow record: a client books a return, warehouse books the
+  // collection. Status is the single source of truth for every user with access.
+  // Client-submitted fields live in form_data; warehouse booking fields in
+  // booking_data (exact fields are finalised in the UI, so they stay flexible).
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS returns (
+      id            SERIAL PRIMARY KEY,
+      client_id     INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+      status        TEXT NOT NULL DEFAULT 'pending',
+      reference     TEXT,                       -- promoted for listing/search (e.g. order no)
+      customer_name TEXT,                        -- promoted for listing
+      form_data     JSONB NOT NULL DEFAULT '{}', -- full client submission
+      booking_data  JSONB NOT NULL DEFAULT '{}', -- warehouse booking details
+      created_by    TEXT,                        -- client user who raised it
+      booked_by     TEXT,                        -- warehouse user who actioned it
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // ── Indexes ───────────────────────────────────────────────────────────────
 
+  await query(`CREATE INDEX IF NOT EXISTS returns_client_idx               ON returns (client_id, created_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS returns_status_idx               ON returns (status, created_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS orders_warehouse_order_date_idx   ON orders (warehouse_id, order_date DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS orders_warehouse_despatch_idx     ON orders (warehouse_id, despatch_date DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS orders_client_order_date_idx      ON orders (client_id, order_date DESC)`);

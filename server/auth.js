@@ -298,7 +298,14 @@ function demoLogin(req, res) {
 
 async function triggerBackgroundSync({ apiKey, username, isWarehouse }) {
   try {
-    // Check whether any previous sync has completed — if so, run incremental
+    // Clients always run an incremental sync (light, and scoped to their own
+    // data by their API key) — never a heavy full sync.
+    if (!isWarehouse) {
+      console.log(`[sync] Client login — running incremental for ${username}`);
+      await runIncrementalSync({ apiKey, triggeredBy: 'login' });
+      return;
+    }
+    // Warehouse: full sync on first ever run, incremental thereafter.
     const lastJob = await queryOne(
       `SELECT id FROM sync_jobs WHERE status IN ('success','partial') ORDER BY completed_at DESC LIMIT 1`
     );

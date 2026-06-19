@@ -212,15 +212,17 @@ async function syncProducts(apiKey, warehouseIds, updatedSince = null) {
       for (const p of batch) {
         const id = p.ID || p.Id;
         if (!id) continue;
+        const category = (p.ProductInCategories || []).map(c => c.ProductCategory?.Name).filter(Boolean).join(', ') || null;
+        const supplier = (p.ProductSuppliers || []).map(sp => sp.ProductSupplier?.Name).filter(Boolean).join(', ') || null;
         await query(
           `INSERT INTO products (id, client_id, sku, name, description, customs_description,
              ean, upc, weight, height, width, depth, price, cost_price, vat_exempt,
              back_order, bundle, discontinued, low_stock_alert_level, handling_time,
              units_per_parcel, additional_parcels_required, has_batch_number, has_serial_number,
              has_expiry_date, best_before_warning_days, image_url, country_of_manufacture_id,
-             commodity_code, packing_instructions, subscription, updated_at, synced_at)
+             commodity_code, packing_instructions, subscription, category, supplier, updated_at, synced_at)
            VALUES ($1,(SELECT id FROM clients WHERE id=$2 LIMIT 1),$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
-                   $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,NOW())
+                   $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,NOW())
            ON CONFLICT (id) DO UPDATE SET
              client_id=EXCLUDED.client_id, sku=EXCLUDED.sku, name=EXCLUDED.name,
              description=EXCLUDED.description, customs_description=EXCLUDED.customs_description,
@@ -235,6 +237,7 @@ async function syncProducts(apiKey, warehouseIds, updatedSince = null) {
              has_expiry_date=EXCLUDED.has_expiry_date, best_before_warning_days=EXCLUDED.best_before_warning_days,
              image_url=EXCLUDED.image_url, commodity_code=EXCLUDED.commodity_code,
              packing_instructions=EXCLUDED.packing_instructions, subscription=EXCLUDED.subscription,
+             category=EXCLUDED.category, supplier=EXCLUDED.supplier,
              updated_at=EXCLUDED.updated_at, synced_at=NOW()`,
           [
             id, p.ClientId || null, p.SKU || '', p.Name || null, p.Description || null,
@@ -248,7 +251,7 @@ async function syncProducts(apiKey, warehouseIds, updatedSince = null) {
             p.BestBeforeDateWarningPeriodDays || null, p.ImageURL || null,
             p.CountryOfManufactureId || null,
             p.CommodityCode?.Code || null, p.PackingInstructions || null,
-            p.Subscription || false, ts(p.LastUpdated),
+            p.Subscription || false, category, supplier, ts(p.LastUpdated),
           ]
         );
       }
@@ -664,6 +667,9 @@ async function runIncrementalSync({ apiKey, triggeredBy = 'cron' } = {}) {
 
     await stepJob(jobId, 'Syncing ASNs');
     total += await runStep('ASNs', () => syncAsns(key, whIds, from7d, null), errors);
+
+    await stepJob(jobId, 'Syncing invoices');
+    total += await runStep('Invoices', () => syncInvoices(key), errors);
 
     await stepJob(jobId, 'Syncing accruals');
     total += await runStep('Accruals', () => syncAccruals(key), errors);

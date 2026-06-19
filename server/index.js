@@ -14,6 +14,7 @@ const calendar    = require('./calendar');
 const quotations  = require('./quotations');
 const picklist    = require('./picklist');
 const replen      = require('./replen');
+const returns     = require('./returns');
 const { ensureCoreSchema } = require('./schema');
 const { runFullSync, runIncrementalSync, getSyncStatus } = require('./sync');
 const { query, queryOne } = require('./db');
@@ -73,7 +74,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── CORS ──────────────────────────────────────────────────────────────────
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, ms-apikey');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
@@ -125,7 +126,9 @@ const server = http.createServer(async (req, res) => {
       if (!session) return;
       if (session.demo) return res.json(200, { ok: true, demo: true, message: 'Sync is disabled in the demo' });
       const body = await req.json().catch(() => ({}));
-      const full = body.full !== false;
+      // Clients may only run incremental syncs; their API key scopes the data to
+      // their own account. Only warehouse users can trigger a full sync.
+      const full = session.isWarehouse ? (body.full !== false) : false;
       res.json(200, { ok: true, message: full ? 'Full sync started' : 'Incremental sync started' });
       setImmediate(async () => {
         const fn = full ? runFullSync : runIncrementalSync;
@@ -242,6 +245,136 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {
         return res.json(500, { error: err.message });
       }
+    }
+
+    // ── Product overview (all of a client's products + on-hand stock) ──────────
+    if (pathname === '/api/products/overview' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+
+      // Clients see their own products; warehouse users can scope by clientId.
+      const clientId = session.isWarehouse
+        ? (url.searchParams.get('clientId') ? parseInt(url.searchParams.get('clientId')) : null)
+        : (session.clientId ? parseInt(session.clientId) : null);
+
+      const params = [];
+      let where = '';
+      if (clientId) { params.push(clientId); where = `WHERE p.client_id = $1`; }
+
+      const rows = await query(
+        `SELECT p.sku, p.name, p.bundle, p.discontinued, p.category, p.supplier,
+                st.qty AS qty_on_hand,
+                (st.product_id IS NOT NULL) AS has_stock_record
+         FROM products p
+         LEFT JOIN (
+           SELECT product_id, SUM(qty_on_hand)::int AS qty
+           FROM product_stock_levels GROUP BY product_id
+         ) st ON st.product_id = p.id
+         ${where}
+         ORDER BY p.sku`,
+        params
+      );
+
+      return res.json(200, {
+        products: rows.map(r => ({
+          sku:           r.sku,
+          name:          r.name || '',
+          type:          r.bundle ? 'Bundle' : 'Product',
+          supplier:      r.supplier || '',
+          category:      r.category || '',
+          discontinued:  r.discontinued,
+          // null inventory → never stocked (no stock record at all)
+          inventory:     r.has_stock_record ? (r.qty_on_hand ?? 0) : null,
+        })),
+      });
+    }
+
+    // ── Order search (for Book a Return — find the order to return) ────────────
+    if (pathname === '/api/orders/search' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      const q = (url.searchParams.get('q') || '').trim();
+      if (q.length < 2) return res.json(200, { orders: [] });
+
+      const clientId = session.isWarehouse
+        ? (url.searchParams.get('clientId') ? parseInt(url.searchParams.get('clientId')) : null)
+        : (session.clientId ? parseInt(session.clientId) : null);
+
+      const params = [`%${q}%`];
+      let where = `WHERE (o.order_number ILIKE $1 OR o.external_reference ILIKE $1)`;
+      if (clientId) where += ` AND o.client_id = $${params.push(clientId)}`;
+
+      const rows = await query(
+        `SELECT o.id, o.order_number, o.external_reference, o.order_date::date AS order_date,
+                o.status_name, o.recipient_first_name, o.recipient_last_name, o.town, o.postcode
+         FROM orders o ${where}
+         ORDER BY o.order_date DESC LIMIT 25`,
+        params
+      );
+      return res.json(200, {
+        orders: rows.map(o => ({
+          id: o.id, orderNumber: o.order_number, reference: o.external_reference,
+          orderDate: o.order_date, status: o.status_name,
+          customerName: [o.recipient_first_name, o.recipient_last_name].filter(Boolean).join(' '),
+          location: [o.town, o.postcode].filter(Boolean).join(', '),
+        })),
+      });
+    }
+
+    // ── Order detail for a return (recipient, address, items) ──────────────────
+    if (pathname === '/api/orders/return-detail' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      const id = parseInt(url.searchParams.get('id'));
+      if (!id) return res.json(400, { error: 'id is required' });
+
+      const o = await queryOne(`SELECT * FROM orders WHERE id = $1`, [id]);
+      if (!o) return res.json(404, { error: 'Order not found' });
+      // Clients may only view their own orders.
+      if (!session.isWarehouse && String(o.client_id) !== String(session.clientId)) {
+        return res.json(403, { error: 'Not your order' });
+      }
+
+      const items = await query(
+        `SELECT oi.sku, oi.quantity, p.name
+         FROM order_items oi LEFT JOIN products p ON p.id = oi.product_id
+         WHERE oi.order_id = $1 ORDER BY oi.sku`,
+        [id]
+      );
+      return res.json(200, {
+        order: {
+          id: o.id, orderNumber: o.order_number, reference: o.external_reference,
+          orderDate: o.order_date, status: o.status_name,
+          customerName: [o.recipient_title, o.recipient_first_name, o.recipient_last_name].filter(Boolean).join(' '),
+          company: o.recipient_company,
+          address: { line1: o.address1, line2: o.address2, line3: o.address3, town: o.town, county: o.county, postcode: o.postcode },
+          email: o.email, phone: o.phone || o.mobile,
+        },
+        items: items.map(i => ({ sku: i.sku, name: i.name || '', quantity: i.quantity })),
+      });
+    }
+
+    // ── Returns ───────────────────────────────────────────────────────────────
+    if (pathname === '/api/returns' && req.method === 'POST') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await returns.create(req, res, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/returns' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      try { return await returns.list(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    const returnMatch = pathname.match(/^\/api\/returns\/(\d+)$/);
+    if (returnMatch && req.method === 'PATCH') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await returns.update(req, res, session, returnMatch[1]); }
+      catch (err) { return res.json(500, { error: err.message }); }
     }
 
     // ── Pass-through proxy ────────────────────────────────────────────────────

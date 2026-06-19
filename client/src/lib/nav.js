@@ -30,6 +30,7 @@ export const REPORT_GROUPS = [
     label: 'Operations',
     warehouseOnly: true,
     items: [
+      { to: '/app/operations/returns-hub',  label: 'Returns Hub',      icon: '↩️', badge: 'new'  },
       { to: '/app/operations/fulfillment',  label: 'Fulfillment',      icon: '📤', badge: 'new'  },
       { to: '/app/operations/eod-despatch', label: 'End-of-Day Despatch', icon: '🚚', badge: 'new'  },
       { to: '/app/operations/pick-list',    label: 'Pick List',        icon: '📝', badge: 'new', hideInDemo: true },
@@ -56,18 +57,17 @@ export const REPORT_GROUPS = [
 // ── Client Hub navigation (PF Client Hub spec) ────────────────────────────────
 // Seven headings shown to CLIENT users only. Mix of flat links and collapsible
 // groups. Items map to existing pages where available, otherwise to a placeholder.
-// The report pages clients can see — everything from REPORT_GROUPS except the
-// warehouse-only Operations reports.
-const CLIENT_REPORT_ITEMS = REPORT_GROUPS
-  .filter(g => !g.warehouseOnly)
-  .flatMap(g => g.items);
+// Report sub-categories clients can see — everything from REPORT_GROUPS except
+// the warehouse-only Operations reports. Used by the Reports index page.
+export const CLIENT_REPORT_GROUPS = REPORT_GROUPS.filter(g => !g.warehouseOnly);
 
 export const CLIENT_NAV = [
   { type: 'link', to: '/app', label: 'Dashboard', icon: '⬛', exact: true },
   {
     type: 'group', id: 'stock', label: 'Stock Analytics', icon: '📈',
     items: [
-      { type: 'group', id: 'stock-reports', label: 'Reports', icon: '📊', items: CLIENT_REPORT_ITEMS },
+      { to: '/app/stock/reports',           label: 'Reports',          icon: '📊' },
+      { to: '/app/stock/product-overview',  label: 'Product Overview', icon: '📋' },
       { to: '/app/stock/inventory-planner', label: 'Inventory Planner', icon: '📦' },
       { to: '/app/stock/excess',            label: 'Excess Stock',      icon: '🗄️' },
     ],
