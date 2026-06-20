@@ -78,8 +78,14 @@ export default function ReturnHistory() {
                             <Detail label="Notes" value={r.formData?.notes} />
                             {/* Booking info appears once the warehouse actions it */}
                             {r.bookingData?.courier && <Detail label="Courier" value={r.bookingData.courier} highlight />}
-                            {r.bookingData?.collectionDate && <Detail label="Collection booked" value={r.bookingData.collectionDate} highlight />}
                             {r.bookingData?.trackingNumber && <Detail label="Tracking" value={r.bookingData.trackingNumber} highlight />}
+                            {r.bookingData?.labelFile && (
+                              <div className="flex gap-2">
+                                <span className="text-ink-dim">Shipping label:</span>
+                                <a href={r.bookingData.labelFile} download={r.bookingData.labelFilename || `return-${r.id}-label`}
+                                  className="text-primary font-semibold underline">↓ Download</a>
+                              </div>
+                            )}
                           </div>
                         </td>
                       </tr>
