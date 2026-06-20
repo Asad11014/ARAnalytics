@@ -7,6 +7,14 @@ const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric
 const inputCls = 'bg-brand-bg border border-brand-border rounded px-2.5 py-1.5 font-mono text-xs text-ink focus:outline-none focus:border-primary'
 const COURIERS = ['Royal Mail', 'FedEx', 'APC', 'DPD', 'UPS', 'Other']
 
+// form_data items is an array of { sku, name, quantity }; address is a nested object.
+const fmtItems = items => Array.isArray(items)
+  ? items.map(i => `${i.sku} ×${i.quantity}`).join(', ')
+  : (items || '')
+const fmtAddress = a => a && typeof a === 'object'
+  ? [a.line1, a.line2, a.line3, a.town, a.county, a.postcode].filter(Boolean).join(', ')
+  : (a || '')
+
 function EditPanel({ ret, onSaved }) {
   const [status, setStatus] = useState(ret.status === 'pending' ? 'booked' : ret.status)
   const [b, setB] = useState({
@@ -45,9 +53,9 @@ function EditPanel({ ret, onSaved }) {
     <div className="px-4 py-4 bg-brand-surface2/40 space-y-3">
       {/* Client-submitted details */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 font-mono text-[11px]">
-        <Detail label="Items" value={ret.formData?.items} />
+        <Detail label="Items" value={fmtItems(ret.formData?.items)} />
         <Detail label="Reason" value={ret.formData?.reason} />
-        <Detail label="Collection address" value={[ret.formData?.addressLine1, ret.formData?.addressLine2, ret.formData?.city, ret.formData?.postcode, ret.formData?.country].filter(Boolean).join(', ')} />
+        <Detail label="Collection address" value={fmtAddress(ret.formData?.address)} />
         <Detail label="Customer contact" value={[ret.formData?.customerEmail, ret.formData?.customerPhone].filter(Boolean).join(' · ')} />
         <Detail label="Preferred date" value={ret.formData?.preferredCollectionDate} />
         <Detail label="Notes from client" value={ret.formData?.notes} />

@@ -3,6 +3,12 @@ import StatusBar from '../../components/StatusBar'
 import { StatusBadge } from '../../lib/returnStatus'
 
 const fmtDate = d => d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+const fmtItems = items => Array.isArray(items)
+  ? items.map(i => `${i.sku} ×${i.quantity}`).join(', ')
+  : (items || '')
+const fmtAddress = a => a && typeof a === 'object'
+  ? [a.line1, a.line2, a.line3, a.town, a.county, a.postcode].filter(Boolean).join(', ')
+  : (a || '')
 
 export default function ReturnHistory() {
   const [returns, setReturns] = useState(null)
@@ -66,8 +72,8 @@ export default function ReturnHistory() {
                       <tr className="bg-brand-surface2/30">
                         <td colSpan={6} className="px-4 py-3">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1 font-mono text-[11px]">
-                            <Detail label="Items" value={r.formData?.items} />
-                            <Detail label="Collection address" value={[r.formData?.addressLine1, r.formData?.city, r.formData?.postcode].filter(Boolean).join(', ')} />
+                            <Detail label="Items" value={fmtItems(r.formData?.items)} />
+                            <Detail label="Collection address" value={fmtAddress(r.formData?.address)} />
                             <Detail label="Preferred date" value={r.formData?.preferredCollectionDate} />
                             <Detail label="Notes" value={r.formData?.notes} />
                             {/* Booking info appears once the warehouse actions it */}
