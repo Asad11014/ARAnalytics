@@ -19,9 +19,12 @@ async function computeClientSummary(warehouseId, clientId, rangeDays) {
   const ord = await queryOne(`SELECT COUNT(*)::int AS n FROM orders o WHERE ${scope} AND ${since}`, p);
   const un  = await queryOne(
     `SELECT COALESCE(SUM(oi.quantity),0)::int AS n FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE ${scope} AND ${since}`, p);
+  // Units booked in = sum of item-level booked quantities for ASNs booked in range.
   const gi  = await queryOne(
-    `SELECT COALESCE(SUM(quantity),0)::int AS n FROM asns WHERE warehouse_id = $1 AND ($2::int IS NULL OR client_id = $2)
-       AND booked_in_date >= NOW() - ($3::int * INTERVAL '1 day')`, p);
+    `SELECT COALESCE(SUM(ai.received_qty),0)::int AS n
+       FROM asn_items ai JOIN asns a ON a.id = ai.asn_id
+      WHERE a.warehouse_id = $1 AND ($2::int IS NULL OR a.client_id = $2)
+        AND a.booked_in_date >= NOW() - ($3::int * INTERVAL '1 day')`, p);
 
   return { ordersShipped: ord.n, unitsShipped: un.n, goodsInReceived: gi.n };
 }

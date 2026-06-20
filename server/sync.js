@@ -449,8 +449,9 @@ async function syncAsns(apiKey, warehouseIds, fromDate, toDate) {
                VALUES ($1,(SELECT id FROM products WHERE id=$2 LIMIT 1),$3,$4,$5,$6)`,
               [
                 id, item.ProductId || null, item.SKU || null,
-                item.Quantity || item.ExpectedQuantity || 0,
-                item.ReceivedQuantity || item.QuantityReceived || 0,
+                item.QuantityExpected || 0,
+                // Units booked in (Mintsoft misspells the received field as "Receieved").
+                item.QuantityBooked ?? item.QuantityReceieved ?? item.QuantityReceived ?? 0,
                 ts(item.LastUpdated),
               ]
             );
