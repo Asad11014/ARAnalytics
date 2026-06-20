@@ -88,7 +88,7 @@ function buildSkuSales(orders) {
 function buildSkuDailySales(orders) {
   const daily = {};
   for (const order of orders) {
-    const date = (order.DespatchDate || order.OrderDate || '').split('T')[0];
+    const date = (order.DespatchDate || order.OrderDate || '').slice(0, 10);
     for (const item of (order.OrderItems || [])) {
       const sku = item.SKU || item.Sku || '';
       const qty = item.Quantity || 0;

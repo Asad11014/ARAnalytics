@@ -249,7 +249,7 @@ function computeWarehouseDashboard(stock, orders30, ordersPrev, orders21, client
 
   const weeklyMap = {};
   for (const o of [...ordersPrev, ...orders30]) {
-    const date = (o.DespatchDate || o.OrderDate || '').split('T')[0];
+    const date = (o.DespatchDate || o.OrderDate || '').slice(0, 10);
     if (!date) continue;
     const d   = new Date(date);
     const sun = new Date(d);
