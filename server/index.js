@@ -15,6 +15,7 @@ const quotations  = require('./quotations');
 const picklist    = require('./picklist');
 const replen      = require('./replen');
 const returns     = require('./returns');
+const { sendEmail } = require('./email');
 const { ensureCoreSchema } = require('./schema');
 const { runFullSync, runIncrementalSync, getSyncStatus } = require('./sync');
 const { query, queryOne } = require('./db');
@@ -375,6 +376,39 @@ const server = http.createServer(async (req, res) => {
       if (session.demo) return res.json(403, { error: 'Disabled in demo' });
       try { return await returns.update(req, res, session, returnMatch[1]); }
       catch (err) { return res.json(500, { error: err.message }); }
+    }
+
+    // ── Website SEO — register interest ───────────────────────────────────────
+    if (pathname === '/api/seo-interest' && req.method === 'POST') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      const body = await req.json().catch(() => ({}));
+      const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+      const recipients = (process.env.SEO_NOTIFY_EMAILS || process.env.RETURNS_NOTIFY_EMAILS || 'arizvi@premiumfulfilment.co.uk')
+        .split(',').map(s => s.trim()).filter(Boolean);
+      const html = `
+        <div style="font-family:Arial,sans-serif;color:#1a1c2e;max-width:600px">
+          <h2 style="color:#2D4270">New Website SEO enquiry</h2>
+          <table style="border-collapse:collapse;font-size:14px">
+            <tr><td style="padding:4px 10px;color:#6b7280">Package</td><td style="padding:4px 10px;font-weight:bold">${esc(body.package || '—')}</td></tr>
+            <tr><td style="padding:4px 10px;color:#6b7280">Name</td><td style="padding:4px 10px">${esc(body.name || '—')}</td></tr>
+            <tr><td style="padding:4px 10px;color:#6b7280">Email</td><td style="padding:4px 10px">${esc(body.email || '—')}</td></tr>
+            <tr><td style="padding:4px 10px;color:#6b7280">Company</td><td style="padding:4px 10px">${esc(body.company || '—')}</td></tr>
+            <tr><td style="padding:4px 10px;color:#6b7280">Submitted by</td><td style="padding:4px 10px">${esc(session.username || '—')}</td></tr>
+          </table>
+          ${body.message ? `<p style="margin-top:12px"><strong>Message:</strong> ${esc(body.message)}</p>` : ''}
+        </div>`;
+      try {
+        await sendEmail({
+          to: recipients,
+          subject: `Website SEO enquiry${body.package ? ` — ${body.package}` : ''} (${body.name || session.username})`,
+          html, replyTo: body.email || undefined,
+        });
+        return res.json(200, { ok: true });
+      } catch (err) {
+        return res.json(500, { error: err.message });
+      }
     }
 
     // ── Pass-through proxy ────────────────────────────────────────────────────
