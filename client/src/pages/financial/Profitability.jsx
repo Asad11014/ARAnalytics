@@ -271,9 +271,9 @@ function ClientBreakdown({ breakdown, meta, orders, stats, period, status, loadi
               <StatCard label="Net Subtotal" value={fmtGBP(meta.subtotal)} accent="primary" />
               <StatCard label="VAT (20%)"    value={fmtGBP(meta.vat)} accent="muted" />
               <StatCard label="Total (inc. VAT)" value={fmtGBP(meta.grand)} accent="warning" />
-              {stats && <StatCard label="Orders"  value={stats.orderCount?.toLocaleString()} />}
-              {stats && <StatCard label="Units"   value={stats.totalUnits?.toLocaleString()} />}
-              {stats && <StatCard label="Parcels" value={stats.totalParcels?.toLocaleString()} />}
+              {stats && <StatCard label="Orders" value={stats.orderCount?.toLocaleString()} />}
+              {stats && <StatCard label="Per-Order Charges" value={fmtGBP(stats.perOrderTotal)} />}
+              {stats && <StatCard label="Account-Level" value={fmtGBP(stats.accountLevel)} />}
             </div>
 
             {/* Summary — cost by charge */}
@@ -306,31 +306,31 @@ function ClientBreakdown({ breakdown, meta, orders, stats, period, status, loadi
                   <thead className="sticky top-0 bg-brand-surface">
                     <tr className="border-b border-brand-border">
                       <Th>Order</Th><Th>Date</Th><Th>Customer</Th>
-                      <Th align="right">Units</Th><Th align="right">Parcels</Th>
-                      <Th>Courier</Th><Th align="right">Order Value</Th><Th align="right">Picking (est)</Th>
+                      <Th align="right">Picks</Th><Th align="right">Parcels</Th>
+                      <Th align="right">Picking</Th><Th align="right">Postage</Th><Th align="right">Order Total</Th>
                     </tr>
                   </thead>
                   <tbody>
                     {orderList.length === 0 && (
-                      <tr><td colSpan={8} className="px-5 py-8 text-center font-mono text-xs text-ink-muted">No orders found for this period.</td></tr>
+                      <tr><td colSpan={8} className="px-5 py-8 text-center font-mono text-xs text-ink-muted">No per-order costs found for this period.</td></tr>
                     )}
                     {orderList.map((o, i) => (
                       <tr key={i} className="border-b border-brand-border last:border-0 hover:bg-brand-surface2/40">
                         <td className="px-5 py-2.5 font-mono text-xs font-bold text-ink">{o.orderNumber}</td>
                         <td className="px-5 py-2.5 font-mono text-xs text-ink-muted">{fmtDate(o.date)}</td>
                         <td className="px-5 py-2.5 text-sm text-ink truncate max-w-[160px]">{o.customer}</td>
-                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink tabular-nums">{o.units?.toLocaleString()}</td>
+                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink-muted tabular-nums">{o.picks}</td>
                         <td className="px-5 py-2.5 text-right font-mono text-xs text-ink-muted tabular-nums">{o.parcels}</td>
-                        <td className="px-5 py-2.5 text-xs text-ink-muted truncate max-w-[140px]">{o.courier}</td>
-                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink tabular-nums">{fmtGBP(o.orderValue)}</td>
-                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink-muted tabular-nums">{fmtGBP(o.pickingEst)}</td>
+                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink tabular-nums">{fmtGBP(o.picking)}</td>
+                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink tabular-nums">{fmtGBP(o.postage)}</td>
+                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink font-semibold tabular-nums">{fmtGBP(o.total)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <div className="px-4 sm:px-5 py-3 border-t border-brand-border font-mono text-[10px] text-ink-dim leading-relaxed">
-                Picking (est) allocates the period’s total picking charge across orders by unit share. Postage, storage and admin charges are billed at account level and shown in the summary above.
+                Actual per-order costs from your invoice. Order Total includes picking, postage, rework, packaging and admin. Account-level charges (storage, goods in, generic admin){stats ? ` — ${fmtGBP(stats.accountLevel)}` : ''} are billed monthly and shown in the summary above.
               </div>
             </div>
           </>
@@ -415,18 +415,20 @@ export default function Profitability() {
     exportCSV(`cost-breakdown-${period?.from}.csv`, cols, rows)
   }
 
-  // Per-order detail export.
+  // Per-order detail export (actual per-order costs from the invoice).
   function exportOrdersCSV() {
     if (!data?.orders?.length) return
+    const num = v => Number(v || 0).toFixed(2)
     const cols = [
       { key: 'orderNumber', label: 'Order Number' },
       { key: 'date',        label: 'Despatch Date' },
       { key: 'customer',    label: 'Customer' },
-      { key: 'units',       label: 'Units' },
+      { key: 'picks',       label: 'Picks' },
       { key: 'parcels',     label: 'Parcels' },
-      { key: 'courier',     label: 'Courier' },
-      { key: 'orderValue',  label: 'Order Value GBP', csvValue: r => Number(r.orderValue || 0).toFixed(2) },
-      { key: 'pickingEst',  label: 'Picking (est) GBP', csvValue: r => Number(r.pickingEst || 0).toFixed(2) },
+      { key: 'picking',     label: 'Picking GBP', csvValue: r => num(r.picking) },
+      { key: 'postage',     label: 'Postage GBP', csvValue: r => num(r.postage) },
+      { key: 'other',       label: 'Other GBP',   csvValue: r => num(r.other) },
+      { key: 'total',       label: 'Order Total GBP', csvValue: r => num(r.total) },
     ]
     exportCSV(`orders-${period?.from}.csv`, cols, data.orders)
   }

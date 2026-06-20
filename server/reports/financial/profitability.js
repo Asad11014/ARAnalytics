@@ -5,6 +5,7 @@
 const { resolveIds, getInvoiceForClient, getInvoicesForMonth, getAllClientInvoices } = require('../db-base');
 const { startSSE, parseReportParams } = require('../base');
 const { query } = require('../../db');
+const { mintsoftGet } = require('../../mintsoft');
 
 const meta = {
   title:       'Profitability',
@@ -120,41 +121,58 @@ async function runClientView(send, clientId, session, fromParam, toParam) {
   const vat      = (subtotal - lines.vatFreePostage) * 0.20;        // VAT-free postage isn't VAT-rated
   const grand    = subtotal + vat;
 
-  // Per-order detail for the period (orders despatched within the billing month).
-  send({ type: 'progress', message: 'Fetching order detail…' });
-  const orderRows = await query(
-    `SELECT o.order_number, o.despatch_date::date AS date,
-            NULLIF(TRIM(CONCAT_WS(' ', o.recipient_first_name, o.recipient_last_name)), '') AS customer,
-            o.number_of_parcels, o.courier_service_name, o.total_order_gross AS order_value,
-            COALESCE((SELECT SUM(quantity) FROM order_items oi WHERE oi.order_id = o.id), 0)::int AS units
-     FROM orders o
-     WHERE o.client_id = $1 AND o.despatch_date::date >= $2 AND o.despatch_date::date <= $3
-     ORDER BY o.despatch_date`,
+  // Real per-order costs from the invoice (Mintsoft attributes picking/postage/
+  // rework/packaging/admin per order; storage/goods-in/generic are account-level).
+  send({ type: 'progress', message: 'Fetching per-order costs…' });
+  const invIds = await query(
+    `SELECT id FROM invoices WHERE client_id = $1 AND invoice_date::date >= $2 AND invoice_date::date <= $3`,
     [clientId, from, to]
   );
+  const items = [];
+  for (const { id } of invIds) {
+    const r = await mintsoftGet(`/api/Accounting/Invoice/${id}/Orders`, process.env.MINTSOFT_ADMIN_KEY);
+    if (r.status === 200 && Array.isArray(r.body)) items.push(...r.body);
+  }
 
-  const totalUnits   = orderRows.reduce((s, o) => s + (o.units || 0), 0);
-  const totalParcels = orderRows.reduce((s, o) => s + (o.number_of_parcels || 0), 0);
-  // Picking is billed per pick, so allocate it across orders by unit share.
-  const pickingPerUnit = totalUnits > 0 ? lines.pickingCost / totalUnits : 0;
+  // Join Mintsoft OrderId → our order header for number/date/customer.
+  const orderIds = [...new Set(items.map(i => i.OrderId).filter(Boolean))];
+  const orderMap = {};
+  if (orderIds.length) {
+    const od = await query(
+      `SELECT id, order_number, despatch_date::date AS date,
+              NULLIF(TRIM(CONCAT_WS(' ', recipient_first_name, recipient_last_name)), '') AS customer,
+              number_of_parcels
+       FROM orders WHERE id = ANY($1)`,
+      [orderIds]
+    );
+    od.forEach(o => { orderMap[o.id] = o; });
+  }
 
-  const orders = orderRows.map(o => ({
-    orderNumber: o.order_number,
-    date:        o.date,
-    customer:    o.customer || '—',
-    units:       o.units || 0,
-    parcels:     o.number_of_parcels || 0,
-    courier:     o.courier_service_name || '—',
-    orderValue:  Number(o.order_value || 0),
-    pickingEst:  Math.round((o.units || 0) * pickingPerUnit * 100) / 100,
-  }));
+  const orders = items.map(it => {
+    const o = orderMap[it.OrderId] || {};
+    const picking = it.TotalPickingCost || 0;
+    const postage = it.TotalPostageCost || 0;
+    const other   = (it.ReworkCost || 0) + (it.PackagingCost || 0) + (it.AdminFee || 0);
+    const total   = it.TotalCost != null ? it.TotalCost : (picking + postage + other);
+    return {
+      orderNumber: o.order_number || String(it.OrderId),
+      date:        o.date || null,
+      customer:    o.customer || '—',
+      parcels:     o.number_of_parcels || 0,
+      picks:       it.NumberOfPicks || 0,
+      picking, postage, other, total,
+    };
+  }).sort((a, b) => (a.date && b.date) ? new Date(a.date) - new Date(b.date) : 0);
+
+  const perOrderTotal = Math.round(orders.reduce((s, o) => s + o.total, 0) * 100) / 100;
+  const accountLevel  = Math.round((subtotal - perOrderTotal) * 100) / 100;
 
   send({
     type: 'done',
     viewType: 'client',
     breakdown: { ...lines, subtotal, vat, grand },
     orders,
-    stats: { orderCount: orders.length, totalUnits, totalParcels },
+    stats: { orderCount: orders.length, perOrderTotal, accountLevel },
     meta:  { subtotal, vat, grand, period: `${from} → ${to}` },
   });
 }
