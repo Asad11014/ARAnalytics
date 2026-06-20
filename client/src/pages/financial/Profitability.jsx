@@ -130,22 +130,32 @@ function WarehouseView({ rows, meta, status, loading, onRun, onExport }) {
 
 // ── Client view ───────────────────────────────────────────────────────────────
 
-const SERVICE_FEE_ROWS = [
-  { key: 'picking', label: 'Picking & Packing', desc: '3PL labour for picking and packing your orders' },
-  { key: 'storage', label: 'Storage',            desc: 'Warehouse space used by your inventory' },
-  { key: 'goodsIn', label: 'Goods In',           desc: 'Receiving and processing inbound stock' },
-  { key: 'returns', label: 'Returns Processing', desc: 'Handling customer returns' },
-  { key: 'other',   label: 'Other Charges',      desc: 'Admin fees, rework, packaging, collections, etc.' },
+// Line items in the same order/wording as the client invoice.
+const INVOICE_LINES = [
+  { key: 'pickingCost',      label: 'Picking Cost' },
+  { key: 'postageCost',      label: 'Postage Cost' },
+  { key: 'vatFreePostage',   label: 'Postage Cost (VAT-free)', vatFree: true },
+  { key: 'reworkCost',       label: 'Rework Cost' },
+  { key: 'packagingCost',    label: 'Packaging Cost' },
+  { key: 'genericAdminCost', label: 'Generic Admin Cost' },
+  { key: 'invoiceAdminCost', label: 'Invoice Admin Cost' },
+  { key: 'goodsInCost',      label: 'GoodsIn Cost' },
+  { key: 'returnsCost',      label: 'Returns Cost' },
+  { key: 'collectionsCost',  label: 'Collections Cost' },
+  { key: 'storageCost',      label: 'Storage Cost' },
 ]
 
-function CostRow({ label, desc, value }) {
+// Plain 2dp number (invoice shows amounts under an "Amount GBP" header, no £).
+const fmtNum = v => Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+function Th({ children, align = 'left' }) {
+  return <th className={`px-5 py-3 font-mono text-[9px] text-ink-dim uppercase tracking-widest text-${align}`}>{children}</th>
+}
+function TotalRow({ label, value, strong }) {
   return (
-    <div className="flex items-center justify-between py-3 border-b border-brand-border last:border-0">
-      <div>
-        <div className="font-sans text-sm font-medium text-ink">{label}</div>
-        {desc && <div className="font-mono text-[10px] text-ink-muted mt-0.5">{desc}</div>}
-      </div>
-      <div className="font-mono text-sm font-bold text-ink tabular-nums">{fmtGBP(value)}</div>
+    <div className="w-full max-w-xs flex items-center justify-between">
+      <span className={`font-sans ${strong ? 'text-[15px] font-bold text-ink' : 'text-sm text-ink-muted'}`}>{label}</span>
+      <span className={`font-mono tabular-nums ${strong ? 'text-xl font-bold text-primary' : 'text-sm text-ink'}`}>{value}</span>
     </div>
   )
 }
@@ -201,15 +211,7 @@ function ClientView({ status, loading, invoiceTotals, onLoadPeriod }) {
 }
 
 function ClientBreakdown({ breakdown, meta, period, status, loading, apiLimited, onBack, onExport }) {
-  const donutOpts = breakdown ? {
-    chart: { type: 'donut', background: 'transparent', animations: { speed: 400 } },
-    colors: ['#2D4270', '#c9a24b'],
-    labels: ['3PL Service Fees', 'Courier (pass-through)'],
-    plotOptions: { pie: { donut: { size: '65%' } } },
-    legend: { position: 'bottom', fontFamily: FONTS.mono, fontSize: '11px' },
-    dataLabels: { enabled: false },
-    tooltip: { theme: 'light', style: { fontFamily: FONTS.mono }, y: { formatter: v => fmtGBP(v) } },
-  } : null
+  const visibleLines = breakdown ? INVOICE_LINES.filter(l => (breakdown[l.key] || 0) > 0) : []
 
   return (
     <>
@@ -254,54 +256,58 @@ function ClientBreakdown({ breakdown, meta, period, status, loading, apiLimited,
         )}
 
         {breakdown && meta && (
-          <>
-            <div className="flex gap-3 flex-wrap">
-              <StatCard label="Net Total"        value={fmtGBP(meta.total)}       accent="primary" />
-              <StatCard label="3PL Service Fees" value={fmtGBP(meta.serviceFees)} accent="warning" />
-              <StatCard label="Courier Costs"    value={fmtGBP(meta.postage)}     accent="muted" />
-              <StatCard label="Period" value={period?.label || meta.period} />
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-              <div className="xl:col-span-2 bg-brand-surface border border-brand-border rounded-lg p-4 sm:p-5">
-                <div className="font-mono text-[9px] text-primary uppercase tracking-widest mb-4">▸ 3PL Service Fees</div>
-                {SERVICE_FEE_ROWS.map(f => (
-                  <CostRow key={f.key} label={f.label} desc={f.desc} value={breakdown[f.key]} />
-                ))}
-                <div className="flex items-center justify-between pt-3 mt-1">
-                  <div className="font-sans text-sm font-bold text-ink">Subtotal — Service Fees</div>
-                  <div className="font-mono text-sm font-bold text-primary tabular-nums">{fmtGBP(breakdown.serviceFees)}</div>
-                </div>
+          <div className="bg-brand-surface border border-brand-border rounded-lg overflow-hidden">
+            {/* Invoice-style header */}
+            <div className="flex items-start justify-between gap-4 px-5 sm:px-6 pt-5 pb-4 border-b border-brand-border">
+              <div>
+                <div className="font-sans font-extrabold text-xl text-ink tracking-tight">COST BREAKDOWN</div>
+                <div className="font-mono text-[11px] text-ink-muted mt-1">Reference · {period?.label || meta.period}</div>
               </div>
-
-              <div className="flex flex-col gap-4">
-                <div className="bg-brand-surface border border-brand-border rounded-lg p-4 sm:p-5">
-                  <div className="font-mono text-[9px] text-primary uppercase tracking-widest mb-4">▸ Courier Costs (Pass-Through)</div>
-                  <CostRow label="Postage & Shipping" desc="Carrier charges passed through at cost" value={breakdown.postage} />
-                  <div className="flex items-center justify-between pt-3 mt-1">
-                    <div className="font-sans text-sm font-bold text-ink">Subtotal — Courier</div>
-                    <div className="font-mono text-sm font-bold text-ink-muted tabular-nums">{fmtGBP(breakdown.postage)}</div>
-                  </div>
-                </div>
-
-                {donutOpts && (
-                  <div className="bg-brand-surface border border-brand-border rounded-lg p-4">
-                    <div className="font-mono text-[9px] text-primary uppercase tracking-widest mb-2">▸ Cost Mix</div>
-                    <ReactApexChart type="donut"
-                      series={[breakdown.serviceFees, breakdown.postage]}
-                      options={donutOpts}
-                      height={180}
-                    />
-                  </div>
-                )}
+              <div className="text-right font-sans text-[13px] text-ink-muted leading-snug">
+                <div className="font-bold text-ink">Premium Fulfilment</div>
+                <div>Unit 27, The Metro Centre</div>
+                <div>Dwight Road, Watford, WD18 9SB</div>
               </div>
             </div>
 
-            <div className="bg-primary/5 border border-primary/20 rounded-lg px-5 py-4 flex items-center justify-between">
-              <div className="font-sans font-bold text-[15px] text-ink">Total Net Charges (no VAT)</div>
-              <div className="font-mono font-bold text-xl text-primary tabular-nums">{fmtGBP(breakdown.total)}</div>
+            {/* Line items */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left min-w-[640px]">
+                <thead>
+                  <tr className="border-b border-brand-border">
+                    <Th>Description</Th>
+                    <Th align="right">Quantity</Th>
+                    <Th align="right">Unit Price</Th>
+                    <Th align="right">VAT</Th>
+                    <Th align="right">Amount GBP</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleLines.length === 0 && (
+                    <tr><td colSpan={5} className="px-5 py-6 text-center font-mono text-xs text-ink-muted">No charges for this period.</td></tr>
+                  )}
+                  {visibleLines.map(l => (
+                    <tr key={l.key} className="border-b border-brand-border last:border-0">
+                      <td className="px-5 py-3 font-sans text-sm text-ink">{l.label}</td>
+                      <td className="px-5 py-3 text-right font-mono text-xs text-ink-muted tabular-nums">1.00</td>
+                      <td className="px-5 py-3 text-right font-mono text-xs text-ink tabular-nums">{fmtNum(breakdown[l.key])}</td>
+                      <td className="px-5 py-3 text-right font-mono text-xs text-ink-muted">{l.vatFree ? 'VAT-free' : '20%'}</td>
+                      <td className="px-5 py-3 text-right font-mono text-sm text-ink font-semibold tabular-nums">{fmtNum(breakdown[l.key])}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </>
+
+            {/* Totals */}
+            <div className="px-5 sm:px-6 py-4 flex flex-col items-end gap-1.5">
+              <TotalRow label="Subtotal" value={fmtNum(meta.subtotal)} />
+              <TotalRow label="TOTAL VAT 20%" value={fmtNum(meta.vat)} />
+              <div className="w-full max-w-xs border-t border-brand-border pt-2 mt-1">
+                <TotalRow label="TOTAL GBP" value={fmtNum(meta.grand)} strong />
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </>
@@ -363,14 +369,17 @@ export default function Profitability() {
     if (!data?.breakdown) return
     const b = data.breakdown
     const rows = [
-      ...SERVICE_FEE_ROWS.map(f => ({ category: '3PL Service Fees', item: f.label, amount: b[f.key] })),
-      { category: 'Courier Costs', item: 'Postage & Shipping', amount: b.postage },
-      { category: 'Total', item: '', amount: b.total },
+      ...INVOICE_LINES.filter(l => (b[l.key] || 0) > 0).map(l => ({
+        description: l.label, vat: l.vatFree ? 'VAT-free' : '20%', amount: b[l.key],
+      })),
+      { description: 'Subtotal',       vat: '', amount: b.subtotal },
+      { description: 'TOTAL VAT 20%',  vat: '', amount: b.vat },
+      { description: 'TOTAL GBP',      vat: '', amount: b.grand },
     ]
     const cols = [
-      { key: 'category', label: 'Category' },
-      { key: 'item',     label: 'Item' },
-      { key: 'amount',   label: 'Amount (£)', csvValue: r => r.amount?.toFixed(2) },
+      { key: 'description', label: 'Description' },
+      { key: 'vat',         label: 'VAT' },
+      { key: 'amount',      label: 'Amount GBP', csvValue: r => Number(r.amount || 0).toFixed(2) },
     ]
     exportCSV(`cost-breakdown-${period?.from}.csv`, cols, rows)
   }

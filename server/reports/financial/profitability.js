@@ -100,21 +100,30 @@ async function runClientView(send, clientId, session, fromParam, toParam) {
     return;
   }
 
-  const picking     = inv.PickingCost  || 0;
-  const storage     = inv.StorageCost  || 0;
-  const goodsIn     = inv.GoodsInCost  || 0;
-  const returns     = inv.ReturnsCost  || 0;
-  const other       = (inv.ReworkCost || 0) + (inv.PackagingCost || 0) +
-                      (inv.GenericInvoiceItemsCost || 0) + (inv.CollectionsCost || 0) + (inv.AdminFee || 0);
-  const serviceFees = picking + storage + goodsIn + returns + other;
-  const postage     = (inv.PostageCost || 0) + (inv.VatFreePostageCost || 0);
-  const total       = serviceFees + postage;
+  // Individual line items, matching the descriptions used on the client invoice.
+  const lines = {
+    pickingCost:      inv.PickingCost              || 0,
+    postageCost:      inv.PostageCost              || 0,
+    vatFreePostage:   inv.VatFreePostageCost       || 0,
+    reworkCost:       inv.ReworkCost               || 0,
+    packagingCost:    inv.PackagingCost            || 0,
+    genericAdminCost: inv.GenericInvoiceItemsCost  || 0,
+    invoiceAdminCost: inv.AdminFee                 || 0,
+    goodsInCost:      inv.GoodsInCost              || 0,
+    returnsCost:      inv.ReturnsCost              || 0,
+    collectionsCost:  inv.CollectionsCost          || 0,
+    storageCost:      inv.StorageCost              || 0,
+  };
+
+  const subtotal = Object.values(lines).reduce((s, v) => s + v, 0); // net
+  const vat      = (subtotal - lines.vatFreePostage) * 0.20;        // VAT-free postage isn't VAT-rated
+  const grand    = subtotal + vat;
 
   send({
     type: 'done',
     viewType: 'client',
-    breakdown: { picking, storage, goodsIn, returns, other, serviceFees, postage, total },
-    meta:      { total, serviceFees, postage, period: `${from} → ${to}` },
+    breakdown: { ...lines, subtotal, vat, grand },
+    meta:      { subtotal, vat, grand, period: `${from} → ${to}` },
   });
 }
 
