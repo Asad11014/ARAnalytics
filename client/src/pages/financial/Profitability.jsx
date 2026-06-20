@@ -210,8 +210,9 @@ function ClientView({ status, loading, invoiceTotals, onLoadPeriod }) {
   )
 }
 
-function ClientBreakdown({ breakdown, meta, period, status, loading, apiLimited, onBack, onExport }) {
+function ClientBreakdown({ breakdown, meta, orders, stats, period, status, loading, apiLimited, onBack, onExport, onExportOrders }) {
   const visibleLines = breakdown ? INVOICE_LINES.filter(l => (breakdown[l.key] || 0) > 0) : []
+  const orderList = orders || []
 
   return (
     <>
@@ -228,14 +229,22 @@ function ClientBreakdown({ breakdown, meta, period, status, loading, apiLimited,
           </div>
         </div>
         {breakdown && (
-          <button onClick={onExport}
-            className="flex-shrink-0 border border-brand-border rounded text-ink-muted font-mono text-[11px] px-3 py-1.5 hover:border-gold hover:text-gold transition-colors">
-            Export CSV
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button onClick={onExport}
+              className="border border-brand-border rounded text-ink-muted font-mono text-[11px] px-3 py-1.5 hover:border-gold hover:text-gold transition-colors">
+              Export Invoice CSV
+            </button>
+            {orderList.length > 0 && (
+              <button onClick={onExportOrders}
+                className="border border-brand-border rounded text-ink-muted font-mono text-[11px] px-3 py-1.5 hover:border-gold hover:text-gold transition-colors">
+                Export Orders CSV
+              </button>
+            )}
+          </div>
         )}
       </header>
 
-      <div className="p-4 sm:p-7 space-y-5">
+      <div className="p-4 sm:p-7 space-y-6">
         <StatusBar message={status.msg} type={status.type} />
 
         {loading && !breakdown && (
@@ -250,64 +259,81 @@ function ClientBreakdown({ breakdown, meta, period, status, loading, apiLimited,
             <div className="text-3xl">🧾</div>
             <div className="font-sans font-bold text-ink">Invoice data not available</div>
             <div className="font-mono text-xs text-ink-muted max-w-sm mx-auto">
-              Past invoices have already been confirmed and issued. The Mintsoft API only exposes live accruals for the current month. Contact your warehouse for PDF copies of past invoices.
+              Contact your warehouse for a copy of this invoice.
             </div>
           </div>
         )}
 
         {breakdown && meta && (
-          <div className="bg-brand-surface border border-brand-border rounded-lg overflow-hidden">
-            {/* Invoice-style header */}
-            <div className="flex items-start justify-between gap-4 px-5 sm:px-6 pt-5 pb-4 border-b border-brand-border">
+          <>
+            {/* KPI row */}
+            <div className="flex gap-3 flex-wrap">
+              <StatCard label="Net Subtotal" value={fmtGBP(meta.subtotal)} accent="primary" />
+              <StatCard label="VAT (20%)"    value={fmtGBP(meta.vat)} accent="muted" />
+              <StatCard label="Total (inc. VAT)" value={fmtGBP(meta.grand)} accent="warning" />
+              {stats && <StatCard label="Orders"  value={stats.orderCount?.toLocaleString()} />}
+              {stats && <StatCard label="Units"   value={stats.totalUnits?.toLocaleString()} />}
+              {stats && <StatCard label="Parcels" value={stats.totalParcels?.toLocaleString()} />}
+            </div>
+
+            {/* Summary — cost by charge */}
+            <div className="bg-brand-surface border border-brand-border rounded-lg p-4 sm:p-5">
+              <div className="font-mono text-[9px] text-primary uppercase tracking-widest mb-4">▸ Charge Summary</div>
               <div>
-                <div className="font-sans font-extrabold text-xl text-ink tracking-tight">COST BREAKDOWN</div>
-                <div className="font-mono text-[11px] text-ink-muted mt-1">Reference · {period?.label || meta.period}</div>
+                {visibleLines.length === 0 && <div className="font-mono text-xs text-ink-muted py-3">No charges for this period.</div>}
+                {visibleLines.map(l => (
+                  <div key={l.key} className="flex items-center justify-between py-2.5 border-b border-brand-border last:border-0">
+                    <span className="font-sans text-sm text-ink">{l.label}{l.vatFree && <span className="ml-2 font-mono text-[9px] text-ink-dim uppercase">VAT-free</span>}</span>
+                    <span className="font-mono text-sm text-ink font-semibold tabular-nums">{fmtGBP(breakdown[l.key])}</span>
+                  </div>
+                ))}
               </div>
-              <div className="text-right font-sans text-[13px] text-ink-muted leading-snug">
-                <div className="font-bold text-ink">Premium Fulfilment</div>
-                <div>Unit 27, The Metro Centre</div>
-                <div>Dwight Road, Watford, WD18 9SB</div>
+              <div className="mt-4 pt-3 border-t border-brand-border flex flex-col items-end gap-1.5">
+                <TotalRow label="Subtotal (net)" value={fmtGBP(meta.subtotal)} />
+                <TotalRow label="VAT 20%"        value={fmtGBP(meta.vat)} />
+                <TotalRow label="Total (inc. VAT)" value={fmtGBP(meta.grand)} strong />
               </div>
             </div>
 
-            {/* Line items */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left min-w-[640px]">
-                <thead>
-                  <tr className="border-b border-brand-border">
-                    <Th>Description</Th>
-                    <Th align="right">Quantity</Th>
-                    <Th align="right">Unit Price</Th>
-                    <Th align="right">VAT</Th>
-                    <Th align="right">Amount GBP</Th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {visibleLines.length === 0 && (
-                    <tr><td colSpan={5} className="px-5 py-6 text-center font-mono text-xs text-ink-muted">No charges for this period.</td></tr>
-                  )}
-                  {visibleLines.map(l => (
-                    <tr key={l.key} className="border-b border-brand-border last:border-0">
-                      <td className="px-5 py-3 font-sans text-sm text-ink">{l.label}</td>
-                      <td className="px-5 py-3 text-right font-mono text-xs text-ink-muted tabular-nums">1.00</td>
-                      <td className="px-5 py-3 text-right font-mono text-xs text-ink tabular-nums">{fmtNum(breakdown[l.key])}</td>
-                      <td className="px-5 py-3 text-right font-mono text-xs text-ink-muted">{l.vatFree ? 'VAT-free' : '20%'}</td>
-                      <td className="px-5 py-3 text-right font-mono text-sm text-ink font-semibold tabular-nums">{fmtNum(breakdown[l.key])}</td>
+            {/* Detailed — per order */}
+            <div className="bg-brand-surface border border-brand-border rounded-lg overflow-hidden">
+              <div className="px-4 sm:px-5 pt-4 pb-3 flex items-center justify-between gap-2">
+                <div className="font-mono text-[9px] text-primary uppercase tracking-widest">▸ Orders in this Period</div>
+                <div className="font-mono text-[10px] text-ink-dim">{orderList.length.toLocaleString()} orders</div>
+              </div>
+              <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
+                <table className="w-full text-left min-w-[760px]">
+                  <thead className="sticky top-0 bg-brand-surface">
+                    <tr className="border-b border-brand-border">
+                      <Th>Order</Th><Th>Date</Th><Th>Customer</Th>
+                      <Th align="right">Units</Th><Th align="right">Parcels</Th>
+                      <Th>Courier</Th><Th align="right">Order Value</Th><Th align="right">Picking (est)</Th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Totals */}
-            <div className="px-5 sm:px-6 py-4 flex flex-col items-end gap-1.5">
-              <TotalRow label="Subtotal" value={fmtNum(meta.subtotal)} />
-              <TotalRow label="TOTAL VAT 20%" value={fmtNum(meta.vat)} />
-              <div className="w-full max-w-xs border-t border-brand-border pt-2 mt-1">
-                <TotalRow label="TOTAL GBP" value={fmtNum(meta.grand)} strong />
+                  </thead>
+                  <tbody>
+                    {orderList.length === 0 && (
+                      <tr><td colSpan={8} className="px-5 py-8 text-center font-mono text-xs text-ink-muted">No orders found for this period.</td></tr>
+                    )}
+                    {orderList.map((o, i) => (
+                      <tr key={i} className="border-b border-brand-border last:border-0 hover:bg-brand-surface2/40">
+                        <td className="px-5 py-2.5 font-mono text-xs font-bold text-ink">{o.orderNumber}</td>
+                        <td className="px-5 py-2.5 font-mono text-xs text-ink-muted">{fmtDate(o.date)}</td>
+                        <td className="px-5 py-2.5 text-sm text-ink truncate max-w-[160px]">{o.customer}</td>
+                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink tabular-nums">{o.units?.toLocaleString()}</td>
+                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink-muted tabular-nums">{o.parcels}</td>
+                        <td className="px-5 py-2.5 text-xs text-ink-muted truncate max-w-[140px]">{o.courier}</td>
+                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink tabular-nums">{fmtGBP(o.orderValue)}</td>
+                        <td className="px-5 py-2.5 text-right font-mono text-xs text-ink-muted tabular-nums">{fmtGBP(o.pickingEst)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="px-4 sm:px-5 py-3 border-t border-brand-border font-mono text-[10px] text-ink-dim leading-relaxed">
+                Picking (est) allocates the period’s total picking charge across orders by unit share. Postage, storage and admin charges are billed at account level and shown in the summary above.
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
     </>
@@ -365,23 +391,44 @@ export default function Profitability() {
     finally { setLoading(false) }
   }
 
+  // Invoice-format export — headers match the VAT invoice we send clients.
   function exportClientCSV() {
     if (!data?.breakdown) return
     const b = data.breakdown
+    const num = v => Number(v || 0).toFixed(2)
     const rows = [
       ...INVOICE_LINES.filter(l => (b[l.key] || 0) > 0).map(l => ({
-        description: l.label, vat: l.vatFree ? 'VAT-free' : '20%', amount: b[l.key],
+        description: l.label, quantity: '1.00', unitPrice: num(b[l.key]),
+        vatRate: l.vatFree ? 'VAT-free' : '20%', amount: num(b[l.key]),
       })),
-      { description: 'Subtotal',       vat: '', amount: b.subtotal },
-      { description: 'TOTAL VAT 20%',  vat: '', amount: b.vat },
-      { description: 'TOTAL GBP',      vat: '', amount: b.grand },
+      { description: 'Subtotal',      quantity: '', unitPrice: '', vatRate: '',      amount: num(b.subtotal) },
+      { description: 'TOTAL VAT 20%', quantity: '', unitPrice: '', vatRate: '',      amount: num(b.vat) },
+      { description: 'TOTAL GBP',     quantity: '', unitPrice: '', vatRate: '',      amount: num(b.grand) },
     ]
     const cols = [
       { key: 'description', label: 'Description' },
-      { key: 'vat',         label: 'VAT' },
-      { key: 'amount',      label: 'Amount GBP', csvValue: r => Number(r.amount || 0).toFixed(2) },
+      { key: 'quantity',    label: 'Quantity' },
+      { key: 'unitPrice',   label: 'Unit Price' },
+      { key: 'vatRate',     label: 'VAT' },
+      { key: 'amount',      label: 'Amount GBP' },
     ]
     exportCSV(`cost-breakdown-${period?.from}.csv`, cols, rows)
+  }
+
+  // Per-order detail export.
+  function exportOrdersCSV() {
+    if (!data?.orders?.length) return
+    const cols = [
+      { key: 'orderNumber', label: 'Order Number' },
+      { key: 'date',        label: 'Despatch Date' },
+      { key: 'customer',    label: 'Customer' },
+      { key: 'units',       label: 'Units' },
+      { key: 'parcels',     label: 'Parcels' },
+      { key: 'courier',     label: 'Courier' },
+      { key: 'orderValue',  label: 'Order Value GBP', csvValue: r => Number(r.orderValue || 0).toFixed(2) },
+      { key: 'pickingEst',  label: 'Picking (est) GBP', csvValue: r => Number(r.pickingEst || 0).toFixed(2) },
+    ]
+    exportCSV(`orders-${period?.from}.csv`, cols, data.orders)
   }
 
   if (!session?.isWarehouse) {
@@ -391,12 +438,15 @@ export default function Profitability() {
           <ClientBreakdown
             breakdown={data?.breakdown}
             meta={data?.meta}
+            orders={data?.orders}
+            stats={data?.stats}
             period={period}
             status={status}
             loading={loading}
             apiLimited={apiLimited}
             onBack={() => { setMode('periods'); setData(null); setApiLimited(false); setStatus({ msg: '', type: null }) }}
             onExport={exportClientCSV}
+            onExportOrders={exportOrdersCSV}
           />
         </div>
       )
