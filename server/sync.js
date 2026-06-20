@@ -602,8 +602,10 @@ async function runFullSync({ apiKey, triggeredBy = 'manual' } = {}) {
     await stepJob(jobId, `Syncing orders from ${from24m}`);
     // Headers only for 24 months (fast), then full items for last 60 days
     total += await runStep('Order headers (24m)', () => syncOrders(key, whIds, from24m, null, false), errors);
-    const from60d = (() => { const d = new Date(); d.setDate(d.getDate() - 60); return d.toISOString().split('T')[0]; })();
-    total += await runStep('Order items (60d)',   () => syncOrders(key, whIds, from60d, null, true),  errors);
+    // 120-day window by order date so the 90-day (despatch-based) dashboard has
+    // complete item data even for orders with a long order→despatch lead time.
+    const from120d = (() => { const d = new Date(); d.setDate(d.getDate() - 120); return d.toISOString().split('T')[0]; })();
+    total += await runStep('Order items (120d)',  () => syncOrders(key, whIds, from120d, null, true),  errors);
 
     await stepJob(jobId, 'Syncing ASNs');
     total += await runStep('ASNs', () => syncAsns(key, whIds, from24m, null), errors);
@@ -707,4 +709,4 @@ async function getSyncStatus() {
   return { lastSyncAt: session?.synced_at ?? null, lastJob: job ?? null };
 }
 
-module.exports = { runFullSync, runIncrementalSync, getSyncStatus, syncWarehouses, syncClients };
+module.exports = { runFullSync, runIncrementalSync, getSyncStatus, syncWarehouses, syncClients, syncOrders };
