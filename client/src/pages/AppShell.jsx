@@ -31,6 +31,8 @@ import SalesTrend  from './analytics/SalesTrend'
 import ReportsIndex    from './ReportsIndex'
 import ProductOverview from './stock/ProductOverview'
 import SeoPage         from './SeoPage'
+import HelpGuides      from './help/HelpGuides'
+import HelpGuideView   from './help/HelpGuideView'
 import BookReturn      from './returns/BookReturn'
 import ReturnHistory   from './returns/ReturnHistory'
 import ReturnsHub      from './operations/ReturnsHub'
@@ -165,7 +167,8 @@ function AppShellLayout() {
 
           {/* Website SEO + Help */}
           <Route path="seo"  element={<SeoPage />} />
-          <Route path="help" element={<Placeholder title="Help Guides" blurb="How-to guides: sourcing, importing, using the WMS, setting up &amp; SEO-ing a website, selling on Amazon, packaging, and inventory planning." icon="❓" />} />
+          <Route path="help"        element={<HelpGuides />} />
+          <Route path="help/:slug"  element={<HelpGuideView />} />
 
           {/* Redirect old flat URLs to new paths */}
           <Route path="reports/best-sellers"  element={<Navigate to="/app/analytics/best-sellers" replace />} />

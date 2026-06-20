@@ -385,7 +385,7 @@ const server = http.createServer(async (req, res) => {
       if (session.demo) return res.json(403, { error: 'Disabled in demo' });
       const body = await req.json().catch(() => ({}));
       const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-      const recipients = (process.env.SEO_NOTIFY_EMAILS || process.env.RETURNS_NOTIFY_EMAILS || 'arizvi@premiumfulfilment.co.uk')
+      const recipients = (process.env.SEO_NOTIFY_EMAILS || 'arizvi@premiumfulfilment.co.uk')
         .split(',').map(s => s.trim()).filter(Boolean);
       const html = `
         <div style="font-family:Arial,sans-serif;color:#1a1c2e;max-width:600px">
