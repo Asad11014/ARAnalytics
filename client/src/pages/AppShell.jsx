@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useNavigate, Link } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useSession } from '../context/SessionContext'
 import { UIProvider, useUI } from '../context/UIContext'
@@ -30,6 +30,7 @@ import SalesTrend  from './analytics/SalesTrend'
 // Client Hub
 import ReportsIndex    from './ReportsIndex'
 import ProductOverview from './stock/ProductOverview'
+import SeoPage         from './SeoPage'
 import BookReturn      from './returns/BookReturn'
 import ReturnHistory   from './returns/ReturnHistory'
 import ReturnsHub      from './operations/ReturnsHub'
@@ -93,7 +94,9 @@ function AppShellLayout() {
               <rect y="12" width="18" height="2" rx="1" fill="currentColor"/>
             </svg>
           </button>
-          <img src={pfLogo} alt="Premium Fulfilment Hub" className="h-8 sm:h-10 w-auto" />
+          <Link to="/app" onClick={closeSidebar} aria-label="Go to dashboard">
+            <img src={pfLogo} alt="Premium Fulfilment Hub" className="h-8 sm:h-10 w-auto" />
+          </Link>
         </div>
         <a href="https://wms.premiumfulfilment.co.uk" target="_blank" rel="noopener noreferrer"
           className="font-mono text-[11px] sm:text-sm text-navy hover:text-gold underline underline-offset-4 decoration-navy/30 hover:decoration-gold transition-colors whitespace-nowrap flex-shrink-0">
@@ -161,7 +164,7 @@ function AppShellLayout() {
           <Route path="invoice/bespoke"         element={<Placeholder title="Bespoke Calculations" blurb="Bespoke cost breakdowns — e.g. bundle and assembly costs — laid out clearly." icon="🧮" />} />
 
           {/* Website SEO + Help */}
-          <Route path="seo"  element={<Placeholder title="Website SEO" blurb="Pricing tiers and details for our website &amp; SEO services. Register your interest for more info." icon="🖥️" />} />
+          <Route path="seo"  element={<SeoPage />} />
           <Route path="help" element={<Placeholder title="Help Guides" blurb="How-to guides: sourcing, importing, using the WMS, setting up &amp; SEO-ing a website, selling on Amazon, packaging, and inventory planning." icon="❓" />} />
 
           {/* Redirect old flat URLs to new paths */}
