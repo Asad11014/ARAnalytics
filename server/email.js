@@ -6,7 +6,7 @@
 const https = require('https');
 
 const FROM = process.env.RETURNS_FROM_EMAIL
-  || 'Premium Fulfilment Hub <hub@hub.premiumfulfilment.co.uk>';
+  || 'Premium Fulfilment Hub <notification@hub.premiumfulfilment.co.uk>';
 
 function resendRequest(payload) {
   return new Promise((resolve, reject) => {
