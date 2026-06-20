@@ -5,34 +5,55 @@
 // user is reflected for everyone with access.
 
 const { query, queryOne } = require('./db');
+const { sendEmail } = require('./email');
 
 // Status lifecycle (extensible). 'pending' = warehouse notified, action required.
 const RETURN_STATUSES = ['pending', 'booked', 'collected', 'completed', 'cancelled'];
 
+const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+
 // ── Email notification ──────────────────────────────────────────────────────
-// Sends the return details to warehouse staff. Until an email transport +
-// recipients are configured (RETURNS_NOTIFY_EMAILS + SMTP/API creds), this logs
-// the notification instead of sending, so the flow is fully functional in dev.
-async function notifyWarehouseOfReturn(record) {
-  const recipients = (process.env.RETURNS_NOTIFY_EMAILS || '')
+// Emails the return details to warehouse staff so they can book the collection.
+async function notifyWarehouseOfReturn(record, clientName) {
+  const recipients = (process.env.RETURNS_NOTIFY_EMAILS || 'arizvi@premiumfulfilment.co.uk')
     .split(',').map(s => s.trim()).filter(Boolean);
 
-  const summary = [
-    `New return request #${record.id}`,
-    `Client: ${record.customer_name || record.client_id || '—'}`,
-    `Reference: ${record.reference || '—'}`,
-    `Raised by: ${record.created_by || '—'}`,
-    `Details: ${JSON.stringify(record.form_data)}`,
-  ].join('\n');
+  const f = record.form_data || {};
+  const addr = f.address || {};
+  const addressStr = [addr.line1, addr.line2, addr.line3, addr.town, addr.county, addr.postcode]
+    .filter(Boolean).join(', ');
+  const itemsRows = (f.items || [])
+    .map(i => `<tr><td style="padding:4px 10px;border:1px solid #e2e8f0">${esc(i.sku)}</td><td style="padding:4px 10px;border:1px solid #e2e8f0">${esc(i.name)}</td><td style="padding:4px 10px;border:1px solid #e2e8f0;text-align:right">${esc(i.quantity)}</td></tr>`)
+    .join('');
 
-  // TODO: plug in real transport (nodemailer SMTP or transactional API) once
-  // recipients + credentials are provided.
-  if (!recipients.length || !process.env.SMTP_HOST) {
-    console.log(`[returns] (email not configured) would notify warehouse:\n${summary}`);
-    return;
-  }
-  console.log(`[returns] notifying ${recipients.join(', ')} of return #${record.id}`);
-  // Real send goes here.
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#1a1c2e;max-width:640px">
+      <h2 style="color:#2D4270;margin-bottom:4px">New return request #${record.id}</h2>
+      <p style="color:#6b7280;margin-top:0">A client has requested a return collection. Action required: book the courier collection.</p>
+      <table style="border-collapse:collapse;font-size:14px;margin:12px 0">
+        <tr><td style="padding:4px 10px;color:#6b7280">Client</td><td style="padding:4px 10px;font-weight:bold">${esc(clientName || record.client_id || '—')}</td></tr>
+        <tr><td style="padding:4px 10px;color:#6b7280">Order reference</td><td style="padding:4px 10px;font-weight:bold">${esc(record.reference || '—')}</td></tr>
+        <tr><td style="padding:4px 10px;color:#6b7280">Customer</td><td style="padding:4px 10px">${esc(record.customer_name || '—')}</td></tr>
+        <tr><td style="padding:4px 10px;color:#6b7280">Contact</td><td style="padding:4px 10px">${esc([f.customerEmail, f.customerPhone].filter(Boolean).join(' · ') || '—')}</td></tr>
+        <tr><td style="padding:4px 10px;color:#6b7280">Collection address</td><td style="padding:4px 10px">${esc(addressStr || '—')}</td></tr>
+        <tr><td style="padding:4px 10px;color:#6b7280">Preferred collection date</td><td style="padding:4px 10px;font-weight:bold">${esc(f.preferredCollectionDate || '—')}</td></tr>
+        <tr><td style="padding:4px 10px;color:#6b7280">Raised by</td><td style="padding:4px 10px">${esc(record.created_by || '—')}</td></tr>
+      </table>
+      <h3 style="color:#2D4270;margin-bottom:6px">Items to return</h3>
+      <table style="border-collapse:collapse;font-size:13px">
+        <tr style="background:#f5f6fa"><th style="padding:4px 10px;border:1px solid #e2e8f0;text-align:left">SKU</th><th style="padding:4px 10px;border:1px solid #e2e8f0;text-align:left">Product</th><th style="padding:4px 10px;border:1px solid #e2e8f0">Qty</th></tr>
+        ${itemsRows || '<tr><td colspan="3" style="padding:6px 10px;border:1px solid #e2e8f0;color:#6b7280">No items listed</td></tr>'}
+      </table>
+      ${f.notes ? `<p style="margin-top:12px"><strong>Notes:</strong> ${esc(f.notes)}</p>` : ''}
+      <p style="color:#6b7280;font-size:12px;margin-top:16px">Manage this return in the Returns Hub.</p>
+    </div>`;
+
+  await sendEmail({
+    to: recipients,
+    subject: `Return request #${record.id} — ${record.reference || 'order'} (${clientName || 'client'})`,
+    html,
+    replyTo: f.customerEmail || undefined,
+  });
 }
 
 // Shape a DB row for the client.
@@ -72,7 +93,8 @@ async function create(req, res, session) {
   );
 
   // Fire-and-forget the warehouse notification.
-  setImmediate(() => notifyWarehouseOfReturn(row).catch(e => console.error('[returns] notify error:', e.message)));
+  const client = clientId ? await queryOne(`SELECT name FROM clients WHERE id=$1`, [clientId]) : null;
+  setImmediate(() => notifyWarehouseOfReturn(row, client?.name).catch(e => console.error('[returns] notify error:', e.message)));
 
   return res.json(201, { return: toRecord(row) });
 }
