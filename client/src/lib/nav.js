@@ -76,17 +76,17 @@ export const CLIENT_NAV = [
     type: 'group', id: 'returns', label: 'Returns', icon: '↩️',
     items: [
       { to: '/app/returns/book',       label: 'Book a Return',        icon: '📝' },
-      { to: '/app/returns/collection', label: 'Request a Collection', icon: '🚚' },
       { to: '/app/returns/history',    label: 'Return History',       icon: '📋' },
     ],
   },
   {
     type: 'group', id: 'shipping', label: 'Shipping Calculator', icon: '🚢',
     items: [
-      { to: '/app/shipping/international', label: 'International Calculator', icon: '🌍' },
-      { to: '/app/shipping/pallets',      label: 'Pallets & Arctic Pricing', icon: '🧊' },
-      { to: '/app/shipping/freight',      label: 'Freight Forwarding',       icon: '🛫' },
-      { to: '/app/shipping/history',      label: 'Shipping History',         icon: '🕘' },
+      { to: '/app/shipping/international', label: 'International Calculator',  icon: '🌍' },
+      { to: '/app/shipping/collection',   label: 'Stock Collection Request',  icon: '🚚' },
+      { to: '/app/shipping/pallets',      label: 'Pallets & Arctic Pricing',  icon: '🚛' },
+      { to: '/app/shipping/freight',      label: 'Freight Forwarding',        icon: '🛫' },
+      { to: '/app/shipping/history',      label: 'Shipping History',          icon: '🕘' },
     ],
   },
   {

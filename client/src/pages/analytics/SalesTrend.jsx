@@ -10,7 +10,7 @@ import StatCard      from '../../components/StatCard'
 import Badge         from '../../components/Badge'
 import MultiSelect   from '../../components/MultiSelect'
 
-const CHART_FONTS = { mono: '"DM Mono", monospace', sans: 'Syne, sans-serif' }
+const CHART_FONTS = { mono: '"DM Mono", monospace', sans: 'Montserrat, sans-serif' }
 
 export default function SalesTrend() {
   const { warehouseId, selectedClientId, session } = useSession()

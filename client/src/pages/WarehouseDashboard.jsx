@@ -10,7 +10,7 @@ import Badge         from '../components/Badge'
 import MiniCalendar  from '../components/MiniCalendar'
 import MultiSelect   from '../components/MultiSelect'
 
-const FONTS = { sans: 'Syne, sans-serif', mono: '"DM Mono", monospace' }
+const FONTS = { sans: 'Montserrat, sans-serif', mono: '"DM Mono", monospace' }
 
 const DATE_PRESETS = [
   { id: 'today',     label: 'Today',       days: 0  },

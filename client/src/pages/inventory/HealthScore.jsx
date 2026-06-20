@@ -9,7 +9,7 @@ import StatCard      from '../../components/StatCard'
 import Badge         from '../../components/Badge'
 
 const STATUS_VARIANT = { healthy: 'success', watchlist: 'warning', critical: 'danger' }
-const FONTS = { mono: '"DM Mono", monospace', sans: 'Syne, sans-serif' }
+const FONTS = { mono: '"DM Mono", monospace', sans: 'Montserrat, sans-serif' }
 
 function ScoreBar({ score }) {
   const color = score >= 70 ? '#16a34a' : score >= 40 ? '#c9a24b' : '#e03355'

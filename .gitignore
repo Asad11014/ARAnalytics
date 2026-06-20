@@ -3,3 +3,6 @@ node_modules/
 *.log
 .env
 .claude/
+
+# Source font folder — only the used weights are committed under client/public/fonts
+Montserrat/

@@ -126,19 +126,15 @@ async function runClientTotals(send, clientId, session) {
     return;
   }
 
-  const { confirmed, accrual } = await getAllClientInvoices(clientId);
+  // Clients only see confirmed invoices — the unconfirmed current-month accrual
+  // is deliberately excluded.
+  const { confirmed } = await getAllClientInvoices(clientId);
   const totals = {};
 
   for (const inv of confirmed) {
     const d    = new Date(inv.Date);
     const yymm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     totals[yymm] = sumInvoice(inv);
-  }
-
-  if (accrual) {
-    const d    = new Date(accrual.period_month);
-    const yymm = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    totals[yymm] = sumInvoice(accrual);
   }
 
   send({ type: 'done', viewType: 'client-totals', totals });

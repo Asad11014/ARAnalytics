@@ -22,12 +22,13 @@ export function buildReportURL(reportId, { warehouseId, clientId, clientIds = []
 
 // Builds the dashboard API URL.
 // statuses: string[] of order status values; empty = all statuses.
-export function buildDashboardURL({ warehouseId, clientId, statuses = [], refresh = false } = {}) {
+export function buildDashboardURL({ warehouseId, clientId, statuses = [], refresh = false, range } = {}) {
   const params = new URLSearchParams({
     warehouseId: warehouseId || '',
     clientId:    clientId   || '',
     statuses:    statuses.join(','),
   })
+  if (range) params.set('range', String(range))
   if (refresh) params.set('refresh', 'true')
   return `/api/dashboard?${params}`
 }

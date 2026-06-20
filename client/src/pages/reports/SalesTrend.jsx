@@ -8,7 +8,7 @@ import SortableTable from '../../components/SortableTable'
 import StatCard      from '../../components/StatCard'
 import Badge from '../../components/Badge'
 
-const CHART_FONTS = { mono: '"DM Mono", monospace', sans: 'Syne, sans-serif' }
+const CHART_FONTS = { mono: '"DM Mono", monospace', sans: 'Montserrat, sans-serif' }
 const TREND_COLOR = { growing: '#16a34a', declining: '#e03355', stable: '#6b7280', new: '#2D4270', stopped: '#9ca3af' }
 
 export default function SalesTrend() {

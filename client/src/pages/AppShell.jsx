@@ -97,7 +97,7 @@ function AppShellLayout() {
         </div>
         <a href="https://wms.premiumfulfilment.co.uk" target="_blank" rel="noopener noreferrer"
           className="font-mono text-[11px] sm:text-sm text-navy hover:text-gold underline underline-offset-4 decoration-navy/30 hover:decoration-gold transition-colors whitespace-nowrap flex-shrink-0">
-          wms.premiumfulfilment.co.uk <span aria-hidden="true">↗</span>
+          Premium WMS <span aria-hidden="true">↗</span>
         </a>
       </header>
 
@@ -146,12 +146,12 @@ function AppShellLayout() {
 
           {/* Returns */}
           <Route path="returns/book"            element={<BookReturn />} />
-          <Route path="returns/collection"      element={<Placeholder title="Request a Collection" blurb="Request a collection from us via a simple form." icon="🚚" />} />
           <Route path="returns/history"         element={<ReturnHistory />} />
 
           {/* Shipping Calculator */}
-          <Route path="shipping/international"  element={<Quotations />} />
-          <Route path="shipping/pallets"        element={<Placeholder title="Pallets & Arctic Pricing" blurb="Request pallet and temperature-controlled (Arctic) shipping pricing from us." icon="🧊" />} />
+          <Route path="shipping/international"  element={<Placeholder title="International Calculator" blurb="An international shipping rate calculator is on the way." icon="🌍" />} />
+          <Route path="shipping/collection"     element={<Placeholder title="Stock Collection Request" blurb="Request a collection of your stock via a simple form." icon="🚚" />} />
+          <Route path="shipping/pallets"        element={<Placeholder title="Pallets & Arctic Pricing" blurb="Request pricing for palletised freight and artic (articulated lorry) transport." icon="🚛" />} />
           <Route path="shipping/freight"        element={<Placeholder title="Freight Forwarding" blurb="Submit a freight forwarding request and we’ll come back to you with options." icon="🛫" />} />
           <Route path="shipping/history"        element={<MyQuotes />} />
 

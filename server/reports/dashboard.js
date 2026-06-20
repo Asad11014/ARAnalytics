@@ -2,11 +2,29 @@
 // Aggregated summary data for the home dashboard. Reads from PostgreSQL.
 
 const { resolveIds, getStock, getOrders, getOrderHeaders, getSkuNames, getCurrentAccrualsMap } = require('./db-base');
+const { queryOne } = require('../db');
 
 const { buildSkuSales, buildSkuDailySales, fmt, daysAgo, startSSE } = require('./base');
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
+const ALLOWED_RANGES = [1, 7, 30, 90];
 const dashboardCache = new Map();
+
+// Headline KPIs for the client dashboard cards — despatch-based, for the range.
+async function computeClientSummary(warehouseId, clientId, rangeDays) {
+  const p = [warehouseId, clientId || null, rangeDays];
+  const since = `o.despatch_date >= NOW() - ($3::int * INTERVAL '1 day')`;
+  const scope = `o.warehouse_id = $1 AND ($2::int IS NULL OR o.client_id = $2)`;
+
+  const ord = await queryOne(`SELECT COUNT(*)::int AS n FROM orders o WHERE ${scope} AND ${since}`, p);
+  const un  = await queryOne(
+    `SELECT COALESCE(SUM(oi.quantity),0)::int AS n FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE ${scope} AND ${since}`, p);
+  const gi  = await queryOne(
+    `SELECT COALESCE(SUM(quantity),0)::int AS n FROM asns WHERE warehouse_id = $1 AND ($2::int IS NULL OR client_id = $2)
+       AND booked_in_date >= NOW() - ($3::int * INTERVAL '1 day')`, p);
+
+  return { ordersShipped: ord.n, unitsShipped: un.n, goodsInReceived: gi.n };
+}
 
 async function run(req, res, url, session) {
   const send = startSSE(res);
@@ -27,8 +45,11 @@ async function run(req, res, url, session) {
   const statusParam = url.searchParams.get('statuses') || '';
   const statuses    = statusParam ? statusParam.split(',').filter(Boolean) : [];
 
+  const rangeParam = parseInt(url.searchParams.get('range'));
+  const rangeDays  = ALLOWED_RANGES.includes(rangeParam) ? rangeParam : 30;
+
   const refresh  = url.searchParams.get('refresh') === 'true';
-  const cacheKey = `${msWarehouseId}:${msClientId || ''}:${isWarehouse ? 'wh' : 'cl'}:${statusParam}`;
+  const cacheKey = `${msWarehouseId}:${msClientId || ''}:${isWarehouse ? 'wh' : 'cl'}:${statusParam}:${rangeDays}`;
 
   if (!refresh) {
     const cached = dashboardCache.get(cacheKey);
@@ -48,6 +69,10 @@ async function run(req, res, url, session) {
     const from60  = fmt(daysAgo(60));
     const toDate  = fmt(today);
     const to30ago = fmt(daysAgo(31));
+    // Client dashboard honours the selected range; warehouse stays on 30 days.
+    const fromRange = fmt(daysAgo(rangeDays));
+    const fromPrev  = fmt(daysAgo(rangeDays * 2));
+    const toPrev    = fmt(daysAgo(rangeDays + 1));
 
     let data;
 
@@ -77,16 +102,24 @@ async function run(req, res, url, session) {
       send({ type: 'progress', message: 'Fetching stock levels…' });
       const stock = await getStock(warehouseId, effectiveClientId);
 
-      send({ type: 'progress', message: 'Fetching orders (last 30 days)…' });
-      const orders30 = await getOrders(warehouseId, effectiveClientId, from30, toDate, { statuses });
+      send({ type: 'progress', message: 'Fetching orders…' });
+      const orders30 = await getOrders(warehouseId, effectiveClientId, fromRange, toDate, { statuses });
 
       send({ type: 'progress', message: 'Fetching previous period…' });
-      const ordersPrev = await getOrderHeaders(warehouseId, effectiveClientId, from60, to30ago, { statuses });
+      const ordersPrev = await getOrderHeaders(warehouseId, effectiveClientId, fromPrev, toPrev, { statuses });
 
       send({ type: 'progress', message: 'Fetching product catalogue…' });
       const skuNameMap = await getSkuNames(warehouseId, effectiveClientId);
 
-      data = computeClientDashboard(stock, orders30, ordersPrev, skuNameMap);
+      data = computeClientDashboard(stock, orders30, ordersPrev, skuNameMap, rangeDays);
+
+      // Headline summary cards (despatch-based) for the selected range.
+      send({ type: 'progress', message: 'Computing summary…' });
+      const summary = await computeClientSummary(warehouseId, effectiveClientId, rangeDays);
+      summary.ordersOnTime = null; // SLA module not built yet — shown as "in development"
+      summary.lowOutStock  = data.stockHealth.lowStock + data.stockHealth.outOfStock;
+      data.summary = summary;
+      data.rangeDays = rangeDays;
     }
 
     const cachedAt = new Date().toISOString();
@@ -101,7 +134,7 @@ async function run(req, res, url, session) {
 
 // ── Client dashboard computation ───────────────────────────────────────────────
 
-function computeClientDashboard(stock, orders30, ordersPrev, skuNameMap) {
+function computeClientDashboard(stock, orders30, ordersPrev, skuNameMap, rangeDays = 30) {
   const skuSales30 = buildSkuSales(orders30);
 
   const units30   = Object.values(skuSales30).reduce((s, n) => s + n, 0);
@@ -116,7 +149,7 @@ function computeClientDashboard(stock, orders30, ordersPrev, skuNameMap) {
     const qty      = item.Level || 0;
     const name     = item.Name || item.ProductName || skuNameMap[sku] || '';
     const sold30   = skuSales30[sku] || 0;
-    const dailyVel = sold30 / 30;
+    const dailyVel = sold30 / rangeDays;
     const cover    = dailyVel > 0 ? qty / dailyVel : (qty > 0 ? Infinity : 0);
 
     stockMap[sku] = { qty, sold30, cover, name };

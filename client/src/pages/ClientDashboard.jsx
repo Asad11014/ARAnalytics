@@ -9,7 +9,7 @@ import SortableTable from '../components/SortableTable'
 import Badge         from '../components/Badge'
 import MiniCalendar  from '../components/MiniCalendar'
 
-const CHART_FONTS = { sans: 'Syne, sans-serif', mono: '"DM Mono", monospace' }
+const CHART_FONTS = { sans: 'Montserrat, sans-serif', mono: '"DM Mono", monospace' }
 const HEALTH_COLORS = ['#16a34a', '#e03355', '#c9a24b', '#9ca3af', '#b91c1c']
 const HEALTH_LABELS = ['Healthy', 'Low Stock', 'Overstock', 'Dead Stock', 'Out of Stock']
 
@@ -18,21 +18,42 @@ function pct(a, b) {
   return Math.round(((a - b) / b) * 100)
 }
 
+const RANGES = [
+  { label: '24 Hrs', days: 1 },
+  { label: '7 Days', days: 7 },
+  { label: '30 Days', days: 30 },
+  { label: '90 Days', days: 90 },
+]
+
+// Headline summary card — PF light-blue background, white text.
+function SummaryCard({ label, value, placeholder, redValue }) {
+  return (
+    <div className="flex-1 min-w-[150px] rounded-lg px-4 py-3" style={{ background: '#7BABDA' }}>
+      <div className="font-mono text-[10px] uppercase tracking-widest text-white/85">{label}</div>
+      {placeholder
+        ? <div className="font-sans font-semibold text-[13px] text-white/80 italic mt-1.5">In development</div>
+        : <div className={`font-sans font-extrabold text-2xl mt-1 ${redValue ? '' : 'text-white'}`}
+               style={redValue ? { color: '#c81e1e' } : undefined}>{value}</div>}
+    </div>
+  )
+}
+
 export default function ClientDashboard() {
   const { session, warehouseId } = useSession()
   const [data,    setData]    = useState(null)
   const [status,  setStatus]  = useState({ msg: '', type: null })
   const [loading, setLoading] = useState(false)
+  const [range,   setRange]   = useState(30)
 
   useEffect(() => {
-    if (warehouseId) load(false)
-  }, [warehouseId])
+    if (warehouseId) load(false, range)
+  }, [warehouseId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function load(refresh = false) {
+  async function load(refresh = false, days = range) {
     setLoading(true)
     setStatus({ msg: 'Loading dashboard…', type: 'loading' })
     try {
-      const url    = buildDashboardURL({ warehouseId, clientId: session?.clientId, refresh })
+      const url    = buildDashboardURL({ warehouseId, clientId: session?.clientId, refresh, range: days })
       const result = await fetchReportSSE(url, p => setStatus({ msg: p.message, type: 'loading' }))
       setData(result)
       setStatus({ msg: '', type: null })
@@ -42,6 +63,14 @@ export default function ClientDashboard() {
       setLoading(false)
     }
   }
+
+  function selectRange(days) {
+    if (days === range) return
+    setRange(days)
+    load(false, days)
+  }
+
+  const rangeLabel = RANGES.find(r => r.days === range)?.label || `${range} days`
 
   const k  = data?.kpis      || {}
   const sh = data?.stockHealth || {}
@@ -154,34 +183,40 @@ export default function ClientDashboard() {
           <div className="font-sans font-bold text-[15px] text-ink">
             {greeting}, {session?.username?.split('@')[0] || session?.username}!
           </div>
-          <div className="font-mono text-[11px] text-ink-muted hidden sm:block">Your inventory overview — last 30 days</div>
+          <div className="font-mono text-[11px] text-ink-muted hidden sm:block">Your overview — {rangeLabel.toLowerCase()}</div>
         </div>
-        <button
-          onClick={() => load(true)}
-          disabled={loading}
-          className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-sans font-bold text-xs rounded px-3 sm:px-4 py-2 transition-colors disabled:opacity-50 flex-shrink-0"
-        >
-          {loading ? '⟳ Refreshing…' : '⟳ Refresh'}
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {/* Date range filter */}
+          <div className="flex gap-0.5 bg-brand-surface2 rounded p-0.5">
+            {RANGES.map(r => (
+              <button key={r.days} onClick={() => selectRange(r.days)} disabled={loading}
+                className={`font-mono text-[10px] px-2 py-1 rounded transition-colors disabled:opacity-50 ${
+                  range === r.days ? 'bg-primary text-white' : 'text-ink-muted hover:text-ink'
+                }`}>
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => load(true)}
+            disabled={loading}
+            className="flex items-center gap-2 bg-primary hover:bg-primary-hover text-white font-sans font-bold text-xs rounded px-3 sm:px-4 py-2 transition-colors disabled:opacity-50"
+          >
+            {loading ? '⟳ Refreshing…' : '⟳ Refresh'}
+          </button>
+        </div>
       </header>
 
       <div className="p-4 sm:p-7 space-y-6">
         <StatusBar message={status.msg} type={status.type} />
 
-        {/* KPI cards */}
+        {/* Summary cards */}
         <div className="flex gap-3 flex-wrap">
-          <StatCard label="Orders (30d)"    value={k.orders30?.toLocaleString()}
-                    delta={ordersDelta}     loading={loading && !data} />
-          <StatCard label="Units Sold (30d)" value={k.units30?.toLocaleString()}
-                    delta={unitsDelta}      loading={loading && !data} accent="primary" />
-          <StatCard label="Low / Out of Stock" value={k.lowStockCount}
-                    loading={loading && !data}
-                    accent={k.lowStockCount > 0 ? 'danger' : 'success'} />
-          <StatCard label="Avg Stock Cover"
-                    value={k.avgCoverDays != null ? `${k.avgCoverDays} days` : '—'}
-                    loading={loading && !data}
-                    accent={k.avgCoverDays < 21 ? 'danger' : k.avgCoverDays > 60 ? 'warning' : 'success'} />
-          <StatCard label="Total SKUs"      value={k.totalSkus?.toLocaleString()} loading={loading && !data} />
+          <SummaryCard label="Orders Shipped"          value={(data?.summary?.ordersShipped ?? 0).toLocaleString()} />
+          <SummaryCard label="Units Shipped"           value={(data?.summary?.unitsShipped ?? 0).toLocaleString()} />
+          <SummaryCard label="Orders Shipped On Time"  placeholder />
+          <SummaryCard label="Goods In Items Received" value={(data?.summary?.goodsInReceived ?? 0).toLocaleString()} />
+          <SummaryCard label="Low / Out of Stock SKUs" value={(data?.summary?.lowOutStock ?? 0).toLocaleString()} redValue />
         </div>
 
         {/* Charts row */}
@@ -190,7 +225,7 @@ export default function ClientDashboard() {
             {/* Sales trend */}
             <div className="xl:col-span-2 bg-brand-surface border border-brand-border rounded-lg p-5">
               <div className="font-mono text-[9px] text-primary uppercase tracking-widest mb-4">
-                ▸ Units Dispatched — Last 30 Days
+                ▸ Units Dispatched — Last {rangeLabel}
               </div>
               {salesTrend.length > 0 ? (
                 <ReactApexChart

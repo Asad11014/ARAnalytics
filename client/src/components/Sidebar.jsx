@@ -175,16 +175,19 @@ function NavNode({ node, closeSidebar, depth }) {
   )
 }
 
-// A collapsible nav group for the Client Hub menu (self-managed open state).
-// Supports nesting (e.g. Stock Analytics → Reports → report pages).
-function CollapsibleGroup({ group, closeSidebar, depth = 0 }) {
+// A collapsible nav group. Open state can be controlled by the parent (for
+// accordion behaviour) or self-managed (for nested groups).
+function CollapsibleGroup({ group, closeSidebar, depth = 0, open: openProp, onToggle }) {
   const location = useLocation()
-  const [open, setOpen] = useState(() => flattenRoutes(group).some(to => location.pathname.startsWith(to)))
+  const [openLocal, setOpenLocal] = useState(() => flattenRoutes(group).some(to => location.pathname.startsWith(to)))
+  const controlled = openProp !== undefined
+  const open   = controlled ? openProp : openLocal
+  const toggle = controlled ? onToggle : () => setOpenLocal(o => !o)
 
   return (
     <div>
       <button
-        onClick={() => setOpen(o => !o)}
+        onClick={toggle}
         style={{ paddingLeft: `${16 + depth * 12}px` }}
         className="w-full flex items-center gap-2.5 pr-3 py-2 text-left transition-colors hover:bg-white/5 group select-none"
       >
@@ -215,6 +218,14 @@ function CollapsibleGroup({ group, closeSidebar, depth = 0 }) {
 
 // PF Client Hub navigation — flat links + collapsible groups (clients only).
 function ClientNav({ closeSidebar }) {
+  const location = useLocation()
+  // Accordion: only one group expanded at a time. Default to the group matching
+  // the current route.
+  const [openId, setOpenId] = useState(() => {
+    const g = CLIENT_NAV.find(e => e.type === 'group' && e.items.some(i => location.pathname.startsWith(i.to)))
+    return g?.id || null
+  })
+
   return (
     <div className="space-y-0.5">
       {CLIENT_NAV.map(entry => entry.type === 'link' ? (
@@ -235,7 +246,9 @@ function ClientNav({ closeSidebar }) {
           </NavLink>
         </div>
       ) : (
-        <CollapsibleGroup key={entry.id} group={entry} closeSidebar={closeSidebar} />
+        <CollapsibleGroup key={entry.id} group={entry} closeSidebar={closeSidebar}
+          open={openId === entry.id}
+          onToggle={() => setOpenId(id => id === entry.id ? null : entry.id)} />
       ))}
     </div>
   )

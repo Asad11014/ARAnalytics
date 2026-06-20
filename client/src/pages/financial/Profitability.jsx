@@ -7,7 +7,7 @@ import StatusBar     from '../../components/StatusBar'
 import SortableTable from '../../components/SortableTable'
 import StatCard      from '../../components/StatCard'
 
-const FONTS = { mono: '"DM Mono", monospace', sans: 'Syne, sans-serif' }
+const FONTS = { mono: '"DM Mono", monospace', sans: 'Montserrat, sans-serif' }
 const fmtGBP = v => `£${Number(v || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtDate = s => s ? new Date(s + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : ''
 
@@ -153,19 +153,17 @@ function CostRow({ label, desc, value }) {
 function ClientView({ status, loading, invoiceTotals, onLoadPeriod }) {
   const PERIODS = buildPeriods(12)
 
+  // Clients only see confirmed invoices — exclude the current (unconfirmed) month.
+  const confirmedPeriods = PERIODS.filter(p => !p.isCurrent)
+
   const periodColumns = [
     { key: 'label', label: 'Billing Period', render: r => (
-        <div className="flex items-center gap-2">
-          <span className="font-sans font-medium text-ink">{r.label}</span>
-          {r.isCurrent && (
-            <span className="font-mono text-[8px] px-1.5 py-0.5 rounded bg-primary/10 text-primary uppercase tracking-wide font-bold">Live</span>
-          )}
-        </div>
+        <span className="font-sans font-medium text-ink">{r.label}</span>
       )
     },
     { key: 'from',  label: 'Start Date', render: r => <span className="font-mono text-xs text-ink-muted">{fmtDate(r.from)}</span> },
     { key: 'to',    label: 'End Date',   render: r => <span className="font-mono text-xs text-ink-muted">{fmtDate(r.to)}</span>   },
-    { key: 'total', label: 'Total',      align: 'right', render: r => {
+    { key: 'total', label: 'Net Total',  align: 'right', render: r => {
         const val = invoiceTotals[r.yymm]
         return val != null
           ? <span className="font-mono text-xs font-semibold text-ink">{fmtGBP(val)}</span>
@@ -195,7 +193,7 @@ function ClientView({ status, loading, invoiceTotals, onLoadPeriod }) {
         <StatusBar message={status.msg} type={status.type} />
         <div className="bg-brand-surface border border-brand-border rounded-lg p-4">
           <div className="font-mono text-[9px] text-primary uppercase tracking-widest mb-3">▸ Billing Periods</div>
-          <SortableTable columns={periodColumns} rows={PERIODS} emptyMessage="No periods available." />
+          <SortableTable columns={periodColumns} rows={confirmedPeriods} emptyMessage="No periods available." />
         </div>
       </div>
     </>
@@ -258,10 +256,10 @@ function ClientBreakdown({ breakdown, meta, period, status, loading, apiLimited,
         {breakdown && meta && (
           <>
             <div className="flex gap-3 flex-wrap">
-              <StatCard label="Total Charges"   value={fmtGBP(meta.total)}       accent="primary" />
+              <StatCard label="Net Total"        value={fmtGBP(meta.total)}       accent="primary" />
               <StatCard label="3PL Service Fees" value={fmtGBP(meta.serviceFees)} accent="warning" />
               <StatCard label="Courier Costs"    value={fmtGBP(meta.postage)}     accent="muted" />
-              {meta.period && <StatCard label="Period" value={meta.period} />}
+              <StatCard label="Period" value={period?.label || meta.period} />
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -300,7 +298,7 @@ function ClientBreakdown({ breakdown, meta, period, status, loading, apiLimited,
             </div>
 
             <div className="bg-primary/5 border border-primary/20 rounded-lg px-5 py-4 flex items-center justify-between">
-              <div className="font-sans font-bold text-[15px] text-ink">Total Charges</div>
+              <div className="font-sans font-bold text-[15px] text-ink">Total Net Charges (no VAT)</div>
               <div className="font-mono font-bold text-xl text-primary tabular-nums">{fmtGBP(breakdown.total)}</div>
             </div>
           </>

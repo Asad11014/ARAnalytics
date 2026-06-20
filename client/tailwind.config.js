@@ -30,7 +30,7 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Syne', 'sans-serif'],
+        sans: ['Montserrat', 'sans-serif'],
         mono: ['"DM Mono"', 'monospace'],
       },
       borderRadius: {
