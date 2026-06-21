@@ -395,10 +395,16 @@ async function ensureCoreSchema() {
     )
   `);
 
+  // Soft-delete: warehouse users can remove a return from history into a
+  // "deleted returns" list that clients never see. NULL = live/visible.
+  await query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ`);
+  await query(`ALTER TABLE returns ADD COLUMN IF NOT EXISTS deleted_by TEXT`);
+
   // ── Indexes ───────────────────────────────────────────────────────────────
 
   await query(`CREATE INDEX IF NOT EXISTS returns_client_idx               ON returns (client_id, created_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS returns_status_idx               ON returns (status, created_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS returns_deleted_idx              ON returns (deleted_at)`);
   await query(`CREATE INDEX IF NOT EXISTS orders_warehouse_order_date_idx   ON orders (warehouse_id, order_date DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS orders_warehouse_despatch_idx     ON orders (warehouse_id, despatch_date DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS orders_client_order_date_idx      ON orders (client_id, order_date DESC)`);

@@ -15,7 +15,7 @@ const fmtAddress = a => a && typeof a === 'object'
   ? [a.line1, a.line2, a.line3, a.town, a.county, a.postcode].filter(Boolean).join(', ')
   : (a || '')
 
-function EditPanel({ ret, onSaved }) {
+function EditPanel({ ret, onSaved, onDeleted }) {
   const [status, setStatus] = useState(ret.status === 'pending' ? 'booked' : ret.status)
   const [b, setB] = useState({
     courier:        ret.bookingData?.courier        || '',
@@ -23,8 +23,20 @@ function EditPanel({ ret, onSaved }) {
     labelFile:      ret.bookingData?.labelFile      || null, // base64 data URL
     labelFilename:  ret.bookingData?.labelFilename  || '',
   })
-  const [saving, setSaving] = useState(false)
+  const [saving,   setSaving]   = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [err,    setErr]    = useState('')
+
+  async function del() {
+    if (!window.confirm(`Delete return ${ret.reference || `#${ret.id}`}? It will move to the Deleted list and the client will no longer see it.`)) return
+    setDeleting(true); setErr('')
+    try {
+      const res  = await fetch(`/api/returns/${ret.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to delete')
+      onDeleted(ret.id)
+    } catch (e) { setErr(e.message); setDeleting(false) }
+  }
 
   const set = (k, v) => setB(p => ({ ...p, [k]: v }))
 
@@ -91,8 +103,12 @@ function EditPanel({ ret, onSaved }) {
           </L>
         </div>
         {err && <div className="font-mono text-[11px] text-danger mt-2">{err}</div>}
-        <div className="flex justify-end mt-3">
-          <button onClick={save} disabled={saving}
+        <div className="flex justify-between items-center mt-3">
+          <button onClick={del} disabled={deleting || saving}
+            className="border border-danger/50 text-danger hover:bg-danger/10 font-sans font-bold text-xs rounded px-3 py-1.5 transition-colors disabled:opacity-50">
+            {deleting ? 'Deleting…' : '🗑 Delete return'}
+          </button>
+          <button onClick={save} disabled={saving || deleting}
             className="bg-primary hover:bg-primary-hover text-white font-sans font-bold text-xs rounded px-4 py-1.5 transition-colors disabled:opacity-50">
             {saving ? 'Saving…' : 'Save & Update Status'}
           </button>
@@ -107,24 +123,44 @@ export default function ReturnsHub() {
   const [status,  setStatus]  = useState({ msg: '', type: null })
   const [loading, setLoading] = useState(false)
   const [open,    setOpen]    = useState(null)
+  const [view,    setView]    = useState('active') // 'active' | 'deleted'
+
+  const deletedView = view === 'deleted'
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res  = await fetch('/api/returns')
+      const res  = await fetch(`/api/returns${deletedView ? '?deleted=true' : ''}`)
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to load returns')
       setReturns(data.returns || [])
       setStatus({ msg: '', type: null })
     } catch (e) { setStatus({ msg: e.message, type: 'error' }) }
     finally { setLoading(false) }
-  }, [])
+  }, [deletedView])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(); setOpen(null) }, [load])
 
   const onSaved = useCallback((updated) => {
     setReturns(rs => rs.map(r => r.id === updated.id ? { ...r, ...updated } : r))
     setOpen(null)
+  }, [])
+
+  // Soft-deleted: drop from the active list immediately.
+  const onDeleted = useCallback((id) => {
+    setReturns(rs => rs.filter(r => r.id !== id))
+    setOpen(null)
+    setStatus({ msg: 'Return moved to Deleted list.', type: 'success' })
+  }, [])
+
+  const onRestore = useCallback(async (id) => {
+    try {
+      const res  = await fetch(`/api/returns/${id}/restore`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to restore')
+      setReturns(rs => rs.filter(r => r.id !== id))
+      setStatus({ msg: 'Return restored to the active list.', type: 'success' })
+    } catch (e) { setStatus({ msg: e.message, type: 'error' }) }
   }, [])
 
   const stats = useMemo(() => {
@@ -136,13 +172,15 @@ export default function ReturnsHub() {
     }
   }, [returns])
 
-  // Action-required (pending) first, then by most recent.
+  // Active: action-required (pending) first, then most recent. Deleted: most
+  // recently deleted first.
   const sorted = useMemo(() => {
     if (!returns) return null
+    if (deletedView) return [...returns].sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt))
     return [...returns].sort((a, b) =>
       (a.status === 'pending' ? 0 : 1) - (b.status === 'pending' ? 0 : 1)
       || new Date(b.createdAt) - new Date(a.createdAt))
-  }, [returns])
+  }, [returns, deletedView])
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -160,7 +198,13 @@ export default function ReturnsHub() {
       <div className="p-4 sm:p-7 space-y-5">
         <StatusBar message={status.msg} type={status.type} />
 
-        {stats && (
+        {/* Active / Deleted view toggle */}
+        <div className="flex gap-1 bg-brand-surface2/60 border border-brand-border rounded-lg p-1 w-fit">
+          <TabBtn active={!deletedView} onClick={() => setView('active')}  label="Active" />
+          <TabBtn active={deletedView}  onClick={() => setView('deleted')} label="Deleted" />
+        </div>
+
+        {stats && !deletedView && (
           <div className="flex gap-3 flex-wrap">
             <StatCard label="Action Required" value={stats.actionRequired} accent={stats.actionRequired > 0 ? 'warning' : undefined} />
             <StatCard label="Booked"          value={stats.booked} accent="success" />
@@ -173,14 +217,33 @@ export default function ReturnsHub() {
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-brand-border">
-                  <Th>Reference</Th><Th>Client</Th><Th>Customer</Th><Th>Requested</Th><Th>Status</Th><Th></Th>
+                  <Th>Reference</Th><Th>Client</Th><Th>Customer</Th>
+                  <Th>{deletedView ? 'Deleted' : 'Requested'}</Th><Th>Status</Th><Th></Th>
                 </tr>
               </thead>
               <tbody>
                 {sorted.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center font-mono text-xs text-ink-muted">No return requests yet.</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-8 text-center font-mono text-xs text-ink-muted">
+                    {deletedView ? 'No deleted returns.' : 'No return requests yet.'}
+                  </td></tr>
                 )}
-                {sorted.map(r => (
+                {sorted.map(r => deletedView ? (
+                  <tr key={r.id} className="border-b border-brand-border last:border-0 hover:bg-brand-surface2/40">
+                    <td className="px-4 py-2.5 font-mono text-xs font-bold text-ink">{r.reference || `#${r.id}`}</td>
+                    <td className="px-4 py-2.5 text-xs text-ink-muted">{r.clientNameResolved || r.clientId || '—'}</td>
+                    <td className="px-4 py-2.5 text-sm text-ink">{r.customerName || '—'}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-ink-muted">
+                      {fmtDate(r.deletedAt)}{r.deletedBy ? <span className="text-ink-dim"> · {r.deletedBy}</span> : ''}
+                    </td>
+                    <td className="px-4 py-2.5"><StatusBadge status={r.status} /></td>
+                    <td className="px-4 py-2.5 text-right">
+                      <button onClick={() => onRestore(r.id)}
+                        className="border border-primary/50 text-primary hover:bg-primary/10 font-sans font-bold text-[11px] rounded px-3 py-1 transition-colors">
+                        ↩ Restore
+                      </button>
+                    </td>
+                  </tr>
+                ) : (
                   <Fragment key={r.id}>
                     <tr
                       className={`border-b border-brand-border last:border-0 cursor-pointer hover:bg-brand-surface2/40 ${r.status === 'pending' ? 'bg-gold/5' : ''}`}
@@ -193,7 +256,7 @@ export default function ReturnsHub() {
                       <td className="px-4 py-2.5 text-right font-mono text-[10px] text-ink-dim">{open === r.id ? '▲ close' : '▼ action'}</td>
                     </tr>
                     {open === r.id && (
-                      <tr><td colSpan={6} className="p-0"><EditPanel ret={r} onSaved={onSaved} /></td></tr>
+                      <tr><td colSpan={6} className="p-0"><EditPanel ret={r} onSaved={onSaved} onDeleted={onDeleted} /></td></tr>
                     )}
                   </Fragment>
                 ))}
@@ -207,6 +270,14 @@ export default function ReturnsHub() {
 }
 
 function Th({ children }) { return <th className="px-4 py-3 font-mono text-[9px] text-ink-dim uppercase tracking-widest">{children}</th> }
+function TabBtn({ active, onClick, label }) {
+  return (
+    <button onClick={onClick}
+      className={`font-sans font-bold text-xs rounded px-3 py-1.5 transition-colors ${active ? 'bg-primary text-white' : 'text-ink-muted hover:text-ink'}`}>
+      {label}
+    </button>
+  )
+}
 function L({ label, children }) {
   return <div className="flex flex-col gap-1"><label className="font-mono text-[9px] text-ink-muted uppercase tracking-wide">{label}</label>{children}</div>
 }

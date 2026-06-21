@@ -70,6 +70,8 @@ function toRecord(r) {
     bookedBy:     r.booked_by,
     createdAt:    r.created_at,
     updatedAt:    r.updated_at,
+    deletedAt:    r.deleted_at,
+    deletedBy:    r.deleted_by,
   };
 }
 
@@ -100,6 +102,8 @@ async function create(req, res, session) {
 }
 
 // GET /api/returns — clients see their own; warehouse sees all (optional ?status=).
+// Deleted returns are hidden from clients entirely. Warehouse users see live
+// returns by default, or the deleted list with ?deleted=true.
 async function list(req, res, url, session) {
   const conditions = [];
   const params = [];
@@ -107,7 +111,9 @@ async function list(req, res, url, session) {
   if (!session.isWarehouse) {
     if (!session.clientId) return res.json(200, { returns: [] });
     conditions.push(`client_id = $${params.push(parseInt(session.clientId))}`);
+    conditions.push(`deleted_at IS NULL`);
   } else {
+    conditions.push(url.searchParams.get('deleted') === 'true' ? `deleted_at IS NOT NULL` : `deleted_at IS NULL`);
     const status = url.searchParams.get('status');
     if (status) conditions.push(`status = $${params.push(status)}`);
     const clientId = url.searchParams.get('clientId');
@@ -162,4 +168,32 @@ async function update(req, res, session, id) {
   return res.json(200, { return: toRecord(row) });
 }
 
-module.exports = { create, list, update, RETURN_STATUSES };
+// DELETE /api/returns/:id — warehouse soft-deletes a return into the deleted
+// list. The record is preserved (and restorable) but hidden from clients.
+async function remove(req, res, session, id) {
+  if (!session.isWarehouse) return res.json(403, { error: 'Warehouse users only' });
+
+  const row = await queryOne(
+    `UPDATE returns SET deleted_at = NOW(), deleted_by = $1, updated_at = NOW()
+     WHERE id = $2 AND deleted_at IS NULL RETURNING *`,
+    [session.username || null, parseInt(id)]
+  );
+  if (!row) return res.json(404, { error: 'Return not found' });
+  return res.json(200, { return: toRecord(row) });
+}
+
+// POST /api/returns/:id/restore — warehouse restores a deleted return back to
+// the live list.
+async function restore(req, res, session, id) {
+  if (!session.isWarehouse) return res.json(403, { error: 'Warehouse users only' });
+
+  const row = await queryOne(
+    `UPDATE returns SET deleted_at = NULL, deleted_by = NULL, updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NOT NULL RETURNING *`,
+    [parseInt(id)]
+  );
+  if (!row) return res.json(404, { error: 'Return not found' });
+  return res.json(200, { return: toRecord(row) });
+}
+
+module.exports = { create, list, update, remove, restore, RETURN_STATUSES };

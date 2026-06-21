@@ -364,6 +364,21 @@ const server = http.createServer(async (req, res) => {
       try { return await returns.update(req, res, session, returnMatch[1]); }
       catch (err) { return res.json(500, { error: err.message }); }
     }
+    if (returnMatch && req.method === 'DELETE') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await returns.remove(req, res, session, returnMatch[1]); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    const returnRestoreMatch = pathname.match(/^\/api\/returns\/(\d+)\/restore$/);
+    if (returnRestoreMatch && req.method === 'POST') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await returns.restore(req, res, session, returnRestoreMatch[1]); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
 
     // ── Website SEO — register interest ───────────────────────────────────────
     if (pathname === '/api/seo-interest' && req.method === 'POST') {
