@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forecasting Module — Plan</title>
+<style>
+  :root{
+    --navy:#2D4270; --navy2:#3a5390; --ink:#1a1c2e; --muted:#6b7280; --dim:#9aa1b2;
+    --bg:#f6f7fb; --surface:#ffffff; --border:#e4e7ef; --gold:#b8893a; --good:#2f8f5b;
+    --warn:#b8893a; --bad:#c0392b; --chip:#eef1f8;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color:var(--ink);background:var(--bg);line-height:1.55;font-size:15px}
+  .wrap{display:grid;grid-template-columns:260px 1fr;max-width:1180px;margin:0 auto}
+  nav{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:24px 18px;
+    border-right:1px solid var(--border);background:var(--surface)}
+  nav h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:18px 0 8px}
+  nav a{display:block;color:var(--ink);text-decoration:none;font-size:13.5px;padding:4px 8px;border-radius:6px}
+  nav a:hover{background:var(--chip);color:var(--navy)}
+  main{padding:40px 48px;background:var(--bg)}
+  header.title{background:linear-gradient(135deg,var(--navy),var(--navy2));color:#fff;border-radius:14px;
+    padding:30px 34px;margin-bottom:30px}
+  header.title h1{margin:0 0 6px;font-size:27px;letter-spacing:-.01em}
+  header.title p{margin:0;opacity:.9;font-size:14.5px}
+  .meta{margin-top:14px;font-size:12.5px;opacity:.8}
+  section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:26px 30px;margin-bottom:22px}
+  h2.sec{margin:0 0 4px;font-size:20px;color:var(--navy)}
+  h2.sec .n{color:var(--dim);font-weight:600;margin-right:10px}
+  .lead{color:var(--muted);margin:0 0 18px;font-size:14px}
+  h3{font-size:16px;margin:22px 0 8px;color:var(--ink)}
+  h4{font-size:13.5px;margin:16px 0 6px;color:var(--navy);text-transform:uppercase;letter-spacing:.05em}
+  p{margin:8px 0}
+  ul,ol{margin:8px 0 8px 0;padding-left:22px}
+  li{margin:5px 0}
+  code{background:var(--chip);padding:1.5px 6px;border-radius:5px;font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;color:var(--navy)}
+  pre{background:#1e2233;color:#e6e9f2;padding:16px 18px;border-radius:10px;overflow-x:auto;font-size:12.5px;
+    font-family:"SF Mono",Menlo,Consolas,monospace;line-height:1.5}
+  pre .c{color:#7f8aa6}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{background:#f0f2f8;color:var(--navy);font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;letter-spacing:.03em}
+  .t-mvp{background:#e7f1ec;color:var(--good)} .t-p2{background:#fbf2e2;color:var(--gold)}
+  .t-p3{background:#eef1f8;color:var(--navy)}
+  .callout{border-left:4px solid var(--navy);background:#f5f7fc;padding:12px 16px;border-radius:0 8px 8px 0;margin:14px 0;font-size:13.5px}
+  .callout.warn{border-color:var(--gold);background:#fdf8ee}
+  .callout.data{border-color:var(--good);background:#f1f8f4}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .card{border:1px solid var(--border);border-radius:10px;padding:14px 16px;background:#fbfcfe}
+  .card h4{margin-top:0}
+  .formula{background:#fbfcff;border:1px dashed var(--navy);border-radius:8px;padding:10px 14px;margin:10px 0;
+    font-family:"SF Mono",Menlo,Consolas,monospace;font-size:13px;color:var(--navy)}
+  .pill{font-size:11px;background:var(--chip);color:var(--navy);border-radius:6px;padding:2px 7px;font-family:monospace}
+  footer{color:var(--muted);font-size:12.5px;text-align:center;padding:20px}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}nav{display:none}main{padding:22px}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav>
+  <strong style="color:var(--navy);font-size:14px">📦 Forecasting Module</strong>
+  <h2>Plan</h2>
+  <a href="#summary">1. Executive summary</a>
+  <a href="#data">2. Data foundation</a>
+  <a href="#demand">3. Demand history</a>
+  <a href="#cleansing">4. Cleansing &amp; outliers</a>
+  <a href="#methods">5. Forecasting methods</a>
+  <a href="#leadtime">6. Lead times</a>
+  <a href="#planning">7. Reorder planning</a>
+  <a href="#accuracy">8. Accuracy measurement</a>
+  <a href="#config">9. Configuration system</a>
+  <a href="#architecture">10. Architecture &amp; data model</a>
+  <a href="#ui">11. Client UI</a>
+  <a href="#phasing">12. Phased rollout</a>
+  <a href="#questions">13. Open questions</a>
+</nav>
+<main>
+<header class="title">
+  <h1>Inventory Forecasting &amp; Replenishment Planning</h1>
+  <p>A per-client demand-forecasting and reorder-planning engine, surfaced under <strong>Inventory Planner</strong> on the client side.</p>
+  <div class="meta">Planning document for review — no code yet · Generated 21 Jun 2026 · Data window analysed: Jul 2025 → Jun 2026</div>
+</header>
+
+<!-- 1 -->
+<section id="summary">
+  <h2 class="sec"><span class="n">1</span>Executive summary</h2>
+  <p class="lead">What this module does and the principles it is built on.</p>
+  <p>The forecasting module predicts future demand for every SKU a client holds, converts those forecasts into concrete buying decisions (when to reorder, how much), and continuously grades its own accuracy against what actually shipped. It is designed to be <strong>individual to each client</strong> — their demand patterns, suppliers, lead times, promotions and trade behaviour all differ — through a layered configuration system with sensible auto-defaults.</p>
+  <div class="callout data"><strong>Implementation status — MVP built &amp; running on the pilot clients.</strong>
+  The forecasting engine, reorder planner, accuracy back-testing and a full <strong>Inventory Planner</strong> UI are implemented and producing live results for <strong>Serendipity, Vending and Mexeco</strong>. Built so far:
+  <ul style="margin-bottom:0">
+    <li>Trade-aware demand series (gross), with statistical <em>and</em> DTD-pallet-courier exceptional-order de-peaking.</li>
+    <li>Demand classification (ADI/CV²) → method auto-selection by rolling back-test: moving-avg, SES, damped Holt, Croston, SBA, <strong>TSB</strong>, seasonal-naïve.</li>
+    <li>Reorder planning — forecast-error-based safety stock, reorder point, capital-efficient order qty, projected stock-out &amp; order-by dates.</li>
+    <li>Accuracy: WMAPE / MASE / bias back-test per SKU + volume-weighted headline; method leaderboard.</li>
+    <li>Inventory Planner page: KPI cards, filterable/sortable plan table, per-SKU drill-down with history+forecast chart &amp; confidence band, accuracy tab.</li>
+  </ul>
+  <span style="color:var(--muted)">Next: client-facing config UI, promotions calendar &amp; uplift, two-stream trade modelling, nightly auto-runs. (§12 phases 2–3.)</span></div>
+
+  <h4>Design principles</h4>
+  <ul>
+    <li><strong>No single algorithm.</strong> Each SKU is classified by its demand pattern and matched to an appropriate method; the engine backtests candidates and picks the winner per SKU.</li>
+    <li><strong>Clean signal first.</strong> Forecasts are only as good as the demand history. We explicitly handle trade one-offs, promotions, stockout-censored demand and returns <em>before</em> fitting any model.</li>
+    <li><strong>Decisions, not just numbers.</strong> The output is a reorder plan (reorder point, order quantity, projected stock-out date, suggested PO dates), not just a demand curve.</li>
+    <li><strong>Always measured.</strong> Every forecast is scored on a rolling basis (MAPE/WMAPE/MASE/bias) so clients can see — and trust — how well it performs.</li>
+    <li><strong>Config with inheritance.</strong> Client-level defaults → category overrides → SKU overrides. Set once, override only where needed.</li>
+  </ul>
+</section>
+
+<!-- 2 -->
+<section id="data">
+  <h2 class="sec"><span class="n">2</span>Data foundation</h2>
+  <p class="lead">What we already have, and the gaps we design around.</p>
+  <table>
+    <tr><th>Source</th><th>Table(s)</th><th>Use in forecasting</th></tr>
+    <tr><td>Sales / demand</td><td><code>orders</code> + <code>order_items</code></td><td>Primary demand signal. ~13.5k orders, 26.5k line items, 990 SKUs over 11 months.</td></tr>
+    <tr><td>Channel</td><td><code>orders.channel_name</code></td><td>Classify trade/bulk vs retail. <strong>Manual Input, Amazon FBA, TikTok FBT</strong> = trade/bulk replenishment; marketplace channels = retail. Drives the per-client trade profile (§4.1).</td></tr>
+    <tr><td>Live stock</td><td><code>product_stock_levels</code></td><td>On-hand / allocated / available — the starting point for days-of-cover &amp; reorder math.</td></tr>
+    <tr><td>Inbound supply</td><td><code>asns</code> + <code>asn_items</code></td><td>In-transit / expected stock netted against reorder needs (on-order position). <em>Not</em> used to derive lead times — see §6.</td></tr>
+    <tr><td>Product master</td><td><code>products</code></td><td>Cost/price (EOQ &amp; value), <code>category</code>, <code>supplier</code>, <code>discontinued</code>, <code>bundle</code>, <code>low_stock_alert_level</code>, <code>units_per_parcel</code>.</td></tr>
+  </table>
+
+  <div class="callout data"><strong>Strength:</strong> daily-grain order data with channel attribution lets us build a clean, trade-aware demand series per client — and net reorder needs against real inbound ASNs.</div>
+
+  <div class="callout warn"><strong>Constraints we design around:</strong>
+  <ul style="margin-bottom:0">
+    <li><strong>History is ~11 months.</strong> Not yet a full year, so true year-over-year seasonality can't be measured for most SKUs at launch. The engine will detect seasonality where it can, fall back to trend/level models otherwise, and grow more seasonal-aware automatically as history accrues past 18–24 months.</li>
+    <li><strong>Lead times are not derivable from data</strong> — we don't capture when a client placed a PO with their supplier, so ASN arrival dates can't tell us lead time. Lead times are therefore <strong>entirely client-configured</strong>, per supplier and per SKU (§6).</li>
+    <li><strong>Clients differ fundamentally in trade mix</strong> — from all-retail to all-trade (e.g. Mexeco). The demand model is configured per client rather than assuming a universal retail pattern (§4.1).</li>
+    <li><strong>Bundles</strong> consume component stock. Demand must be exploded to components for planning (we already have the bundle-component lookup from the replen work).</li>
+  </ul></div>
+</section>
+
+<!-- 3 -->
+<section id="demand">
+  <h2 class="sec"><span class="n">3</span>Demand history construction</h2>
+  <p class="lead">Turning raw order lines into a per-SKU time series the models can learn from.</p>
+  <h4>Base series</h4>
+  <p>For each <code>(client_id, sku)</code> we build a continuous daily series of units demanded, then aggregate to weekly/monthly as needed:</p>
+  <pre><span class="c">-- daily demand per SKU (zero-filled across the full calendar)</span>
+units_demanded(d) = Σ order_items.quantity
+  WHERE orders.order_date::date = d
+    AND orders.status_id NOT IN (cancelled/void)
+    AND order is not flagged as an excluded outlier</pre>
+  <h4>Key modelling decisions</h4>
+  <ul>
+    <li><strong>Order date vs despatch date.</strong> We forecast on <code>order_date</code> (true customer demand timing), not despatch — despatch is distorted by our own backlog/stockouts. Despatch is used separately for the accuracy/"units shipped" comparison.</li>
+    <li><strong>Zero-fill.</strong> Days with no orders are explicit zeros (critical for intermittent-demand methods to work correctly).</li>
+    <li><strong>Gross demand</strong> (default, per your decision). Demand is counted as units ordered, <em>not</em> reduced by later returns — we forecast what customers asked for. (A net-of-returns mode remains available in config but is off by default.)</li>
+    <li><strong>Calendar features.</strong> Day-of-week, week-of-year, month, UK bank holidays and a client-configurable event calendar are attached for models that use regressors.</li>
+    <li><strong>Granularity auto-select.</strong> High-volume SKUs forecast at daily/weekly grain; low-volume/intermittent SKUs roll up to weekly/monthly to stabilise the signal.</li>
+  </ul>
+</section>
+
+<!-- 4 -->
+<section id="cleansing">
+  <h2 class="sec"><span class="n">4</span>Data cleansing &amp; outlier handling</h2>
+  <p class="lead">The part that makes the forecast trustworthy. Each effect is detected, flagged, and handled — never silently averaged in.</p>
+
+  <h3>4.1 Trade / bulk orders &amp; the per-client trade profile</h3>
+  <p>Trade is not a universal "exclude the one-off" rule — it varies enormously by client, so each client gets a <strong>trade profile</strong>:</p>
+  <table>
+    <tr><th>Profile</th><th>Example</th><th>How demand is modelled</th></tr>
+    <tr><td><strong>Retail</strong></td><td>Marketplace-led clients</td><td>Trade orders are rare; flag &amp; separate them so they don't inflate baseline.</td></tr>
+    <tr><td><strong>Mixed</strong></td><td>Retail + regular bulk customers; FBA/FBT restocks</td><td>Split into two streams — a <em>retail baseline</em> and a <em>regular-trade</em> stream — and forecast each, then combine.</td></tr>
+    <tr><td><strong>All-trade</strong></td><td><strong>Mexeco</strong> — every order is trade</td><td>Trade <em>is</em> the baseline; do <strong>not</strong> strip it. Only flag <em>exceptional</em> orders (see below).</td></tr>
+  </table>
+
+  <h4>Channel mapping (configurable per client)</h4>
+  <p>Channels are the primary trade signal. Defaults: <code>Manual Input</code>, <code>Amazon FBA</code> and <code>TikTok FBT</code> = <strong>trade/bulk restock</strong>; marketplace channels (Shopify, eBay, Amazon, Woo, etc.) = <strong>retail</strong>. Clients can remap. FBA/FBT restocks are genuine outbound demand on the client's stock and are forecast as a (often lumpy) replenishment stream — useful because they tend to be periodic.</p>
+
+  <h4>Regular bulk vs exceptional orders</h4>
+  <div class="callout"><strong>Key nuance you raised:</strong> a regular bulk customer ordering a bulk-box product is <em>baseline demand</em> and must be kept — even when unit counts look low because the product itself is a bulk box. What we must catch is the <em>exceptional</em> order: e.g. Mexeco's <strong>pallet orders for PARSLEY IN TIME</strong> that contain far more than a normal order.</div>
+  <p>So "outlier" detection runs <strong>relative to each SKU's own order-size distribution</strong>, not by absolute units or channel: a line quantity exceeding <span class="pill">median + k·MAD</span> (robust, default k≈4–5) of that SKU's typical order is flagged as an exceptional/pallet order. Those spikes are de-peaked from the baseline series and handled as known, separately-planned quantities (and can be entered ahead of time as a demand event, §4.2). Regular bulk orders — even large but <em>typical</em> ones for that SKU — stay in the baseline.</p>
+  <h4>Courier signal (second detector)</h4>
+  <p>Pallet orders almost always ship on a <strong>pallet courier (DTD)</strong> rather than the usual parcel courier (APC / Royal Mail). The engine therefore also treats a pallet-couriered line as exceptional — which catches a <em>first</em> pallet order before the statistical detector has enough history to judge it. This is <strong>guarded</strong>: if pallet shipping is the majority for a SKU, that's simply how the client ships and nothing is stripped. <span class="pill">Verified live: Mexeco PKSUJS77510250 — 1,266 units of pallet orders de-peaked, baseline drops to a clean ~34/wk.</span></p>
+
+  <h3>4.2 Promotions &amp; marketing events</h3>
+  <p>Promotions create uplift that shouldn't bleed into baseline. The module includes a <strong>promotion/event calendar</strong> (per client) capturing date range, affected SKUs/categories, and type (discount %, BOGOF, marketplace deal day, influencer drop, etc.).</p>
+  <ul>
+    <li><strong>Baseline cleaning:</strong> measured uplift during a past promo is stripped back to baseline before fitting (so the "normal" forecast isn't inflated).</li>
+    <li><strong>Forward application:</strong> if a future promo is scheduled, its expected uplift factor (learned from comparable past promos, or a manual multiplier) is layered back onto the forecast for that window.</li>
+    <li><strong>Uplift learning:</strong> over time the engine estimates each promo type's typical lift per category to auto-suggest factors.</li>
+  </ul>
+
+  <h3>4.3 Stockout (censored demand)</h3>
+  <div class="callout warn">When a SKU was out of stock, recorded sales understate true demand — those are <em>lost sales</em>, not low demand. Treating a stockout period as genuine zero demand silently teaches the model to under-forecast and perpetuates the stockout.</div>
+  <p>Using stock history + <code>on_back_order</code> signals, periods of zero available stock are marked <strong>censored</strong>. Demand in those periods is imputed (from surrounding non-censored demand) or down-weighted, so the model learns unconstrained demand.</p>
+
+  <h3>4.4 New &amp; discontinued products</h3>
+  <ul>
+    <li><strong>New SKUs</strong> (insufficient history): forecast from an <em>analog/proxy SKU</em> or a <strong>category-level demand prior</strong>, blending toward the SKU's own data as it accumulates (Bayesian shrinkage).</li>
+    <li><strong>Discontinued/EOL</strong>: forecasts taper to run-down; reorder suppressed; flagged for sell-through planning.</li>
+  </ul>
+
+  <h3>4.5 General outliers</h3>
+  <p>Remaining spikes/dips (data errors, one-day channel glitches) are detected via STL-residual or rolling robust z-score and winsorised, with every adjustment logged and visible/reversible in the UI.</p>
+</section>
+
+<!-- 5 -->
+<section id="methods">
+  <h2 class="sec"><span class="n">5</span>Forecasting methods &amp; model selection</h2>
+  <p class="lead">A library of methods, auto-matched to each SKU's demand pattern, then chosen by backtest.</p>
+
+  <h3>5.1 Demand classification (which family to use)</h3>
+  <p>Each SKU is classified using <strong>ADI</strong> (Average inter-Demand Interval) and <strong>CV²</strong> (squared coefficient of variation of demand sizes) — the Syntetos–Boylan scheme:</p>
+  <table>
+    <tr><th>Class</th><th>Condition</th><th>Method family</th></tr>
+    <tr><td><strong>Smooth</strong></td><td>ADI &lt; 1.32, CV² &lt; 0.49</td><td>Exponential smoothing (SES/Holt/Holt-Winters), moving average</td></tr>
+    <tr><td><strong>Erratic</strong></td><td>ADI &lt; 1.32, CV² ≥ 0.49</td><td>Robust smoothing, regression w/ regressors, winsorised MA</td></tr>
+    <tr><td><strong>Intermittent</strong></td><td>ADI ≥ 1.32, CV² &lt; 0.49</td><td>Croston's / SBA / TSB</td></tr>
+    <tr><td><strong>Lumpy</strong></td><td>ADI ≥ 1.32, CV² ≥ 0.49</td><td>TSB + separate trade-order planning; wide safety stock</td></tr>
+  </table>
+
+  <h3>5.2 Method library</h3>
+  <div class="grid2">
+    <div class="card"><h4>Baseline</h4>
+      <ul><li>Naïve / Seasonal-naïve</li><li>Moving average &amp; weighted MA</li><li>Simple exponential smoothing (SES)</li></ul></div>
+    <div class="card"><h4>Trend &amp; seasonality</h4>
+      <ul><li>Holt (trend)</li><li>Holt-Winters (trend+seasonal)</li><li>STL decomposition + forecast</li></ul></div>
+    <div class="card"><h4>Intermittent ✓ built</h4>
+      <ul><li>Croston's</li><li>SBA (Syntetos-Boylan Approx.)</li><li>TSB (handles obsolescence — decays dying SKUs toward zero)</li></ul></div>
+    <div class="card"><h4>Causal / advanced</h4>
+      <ul><li>Linear/Poisson regression with regressors (promo, price, channel mix, calendar)</li><li>Optional ETS/ARIMA auto-fit</li><li>Ensemble (weighted blend of top performers)</li></ul></div>
+  </div>
+  <div class="callout">Phase 1 ships the baseline + trend/seasonal + intermittent families (all implementable in pure JS, no Python service). Causal/ARIMA/ensemble are Phase 2–3, added behind the same interface.</div>
+
+  <h3>5.3 Automatic model selection</h3>
+  <ol>
+    <li>Hold out the last <em>N</em> periods (rolling-origin / time-series cross-validation — never random splits).</li>
+    <li>Fit each candidate method for the SKU's class on the training window.</li>
+    <li>Score on the holdout using the client's primary metric (default <strong>WMAPE</strong>, weighted by volume so high-value SKUs dominate).</li>
+    <li>Select the winner (or an ensemble of the top 2–3). Persist the chosen method + params per SKU.</li>
+    <li>Re-evaluate on a schedule; if the live method's tracking signal drifts out of bounds, auto-reselect.</li>
+  </ol>
+</section>
+
+<!-- 6 -->
+<section id="leadtime">
+  <h2 class="sec"><span class="n">6</span>Supplier &amp; SKU lead times — client-configured</h2>
+  <p class="lead">Lead time drives reorder timing and most of the safety-stock requirement.</p>
+  <div class="callout warn"><strong>Lead times are entered by the client, not derived.</strong> We don't capture when a client placed an order with their supplier, so ASN arrival dates can't tell us how long supply took. Trying to infer it would be unreliable — so the module asks clients to configure lead times directly.</div>
+  <ul>
+    <li><strong>Supplier-level lead times.</strong> A client maintains a list of their suppliers with a lead time against each (the default applied to every SKU from that supplier).</li>
+    <li><strong>SKU-level overrides.</strong> Any individual SKU can carry its own lead time, overriding its supplier default.</li>
+    <li><strong>Optional variability.</strong> Clients may add a lead-time spread (e.g. "± 7 days") or a min/max; this feeds the safety-stock formula (§7). If omitted, a small conservative default spread is assumed.</li>
+    <li><strong>On-order netting still uses ASNs.</strong> Open ASNs (expected inbound) are credited to the stock position so we don't double-order what's already coming — that part <em>is</em> data-driven; only the lead-time length is config.</li>
+  </ul>
+</section>
+
+<!-- 7 -->
+<section id="planning">
+  <h2 class="sec"><span class="n">7</span>Reorder &amp; inventory planning outputs</h2>
+  <p class="lead">Converting the forecast into buying decisions.</p>
+  <h4>Core quantities (per SKU)</h4>
+  <div class="formula">Safety stock&nbsp; SS = z · √( LT·σ²<sub>e</sub> + d̄²·σ²<sub>LT</sub> )&nbsp;&nbsp;<span style="color:var(--muted)">σ<sub>e</sub> = out-of-sample forecast error</span></div>
+  <div class="callout data" style="margin-top:0"><strong>Refinement (built):</strong> safety stock is sized from the chosen method's <em>back-tested forecast error</em> (σ<sub>e</sub>), not raw historical demand variance. This buffers against how wrong the forecast actually is — which is what causes stockouts — and naturally shrinks for SKUs we forecast well, supporting the capital-efficiency goal.</div>
+  <div class="formula">Reorder point&nbsp; ROP = d̄ · LT + SS</div>
+  <div class="formula">Order-up-to level&nbsp; S = d̄ · (LT + R) + SS&nbsp;&nbsp;<span style="color:var(--muted)">(R = review period)</span></div>
+  <div class="formula">EOQ = √( 2·D·OrderCost / HoldingCost )&nbsp;&nbsp;→ rounded to MOQ / carton / pallet multiples</div>
+  <ul>
+    <li><span class="pill">z</span> from the client's target service level / fill rate (default <strong>95% → 1.65</strong>, client-wide).</li>
+    <li><span class="pill">d̄, σ<sub>d</sub></span> mean &amp; std of forecast demand; <span class="pill">LT, σ<sub>LT</sub></span> from §6.</li>
+    <li>Net position = on-hand + on-order (open ASNs) − allocated/backorders, so in-transit stock is credited.</li>
+  </ul>
+  <div class="callout warn"><strong>Default bias: capital efficiency / avoid overstock.</strong> The 95% service target is held, but wherever there's discretion the engine leans lean — order quantities round <em>down</em> to the nearest valid multiple, cover targets stay tight, EOQ is capped so it never piles on months of stock, and overstock/excess is flagged prominently. The goal is "in stock at 95%, with the least capital tied up", not "never run out at any cost".</div>
+  <h4>Recommendations surfaced</h4>
+  <table>
+    <tr><th>Output</th><th>Description</th></tr>
+    <tr><td>Demand forecast</td><td>Per SKU, daily/weekly/monthly, with confidence intervals (P50/P90).</td></tr>
+    <tr><td>Projected stock-out date</td><td>When available stock + on-order runs out at forecast run-rate.</td></tr>
+    <tr><td>Days / weeks of cover</td><td>Current and projected, vs target.</td></tr>
+    <tr><td>Reorder recommendation</td><td><em>Order N units by &lt;date&gt;</em> — respecting MOQ, order multiples, min/max, and existing ASNs.</td></tr>
+    <tr><td>Suggested PO schedule</td><td>Forward calendar of when/how much to order per supplier, groupable into single POs.</td></tr>
+    <tr><td>Risk flags</td><td>Imminent stockout, overstock/excess, dead stock, expiry risk, supplier-reliability risk.</td></tr>
+  </table>
+</section>
+
+<!-- 8 -->
+<section id="accuracy">
+  <h2 class="sec"><span class="n">8</span>Accuracy measurement</h2>
+  <p class="lead">Continuously grading the forecaster against reality — for trust and for auto-tuning.</p>
+  <h3>8.1 Backtesting</h3>
+  <p>Rolling-origin evaluation: at each historical cutoff the engine forecasts forward and compares to what actually happened, producing an honest out-of-sample accuracy profile per SKU and in aggregate.</p>
+  <h3>8.2 Metrics</h3>
+  <table>
+    <tr><th>Metric</th><th>What it tells you</th></tr>
+    <tr><td><strong>Planning accuracy</strong> (built — headline)</td><td>Accuracy of total catalogue demand over the replenishment window (~lead time) — what the reorder decision depends on; timing noise cancels. <span class="pill">Pilots: Serendipity 80% · Vending 75% · Mexeco 64%</span></td></tr>
+    <tr><td><strong>WMAPE</strong> (volume-weighted MAPE)</td><td>Catalogue (weekly) and per-SKU views, shown transparently alongside the headline so noise isn't hidden.</td></tr>
+    <tr><td>MAPE / sMAPE</td><td>Per-SKU % error (sMAPE handles near-zero demand).</td></tr>
+    <tr><td>MAE / RMSE</td><td>Absolute unit error; RMSE penalises big misses.</td></tr>
+    <tr><td><strong>MASE</strong></td><td>Skill vs seasonal-naïve baseline (&lt;1 = beating naïve). Best cross-SKU comparator.</td></tr>
+    <tr><td>Bias (MPE) &amp; Tracking signal</td><td>Persistent over/under-forecasting; trips auto-reselection.</td></tr>
+  </table>
+  <h3>8.3 Beyond forecast error — did it keep stock right?</h3>
+  <p>Forecast error alone isn't the goal; service is. We also report inventory outcomes:</p>
+  <ul>
+    <li><strong>Forecast vs actual units shipped</strong> per SKU/period (the headline chart clients asked for).</li>
+    <li><strong>Achieved fill rate / stockout incidents</strong> vs target — did recommendations prevent stockouts?</li>
+    <li><strong>Overstock €/units</strong> — did we over-order? Inventory-turn impact.</li>
+    <li><strong>"What the plan would have done"</strong> backtest: simulate following the reorder advice and report avoided stockouts &amp; carried stock.</li>
+  </ul>
+  <h3>8.4 Method leaderboard</h3>
+  <p>Per client, a table of methods vs accuracy so it's transparent which model serves each SKU and how the engine is improving over time.</p>
+</section>
+
+<!-- 9 -->
+<section id="config">
+  <h2 class="sec"><span class="n">9</span>Configuration system</h2>
+  <p class="lead">Comprehensive, per-client, with inheritance so it's powerful but not tedious.</p>
+  <h4>Inheritance: <span class="pill">Client defaults</span> → <span class="pill">Category overrides</span> → <span class="pill">SKU overrides</span></h4>
+  <table>
+    <tr><th>Group</th><th>Settings</th></tr>
+    <tr><td>Service &amp; targets</td><td>Target service level / fill rate (<strong>default 95%, client-wide</strong>), target days-of-cover, min/max stock. <em>Inventory bias defaults to capital-efficient (§7).</em></td></tr>
+    <tr><td>Trade profile</td><td>Client trade profile (retail | mixed | all-trade); channel→type mapping (Manual Input / Amazon FBA / TikTok FBT = trade by default); exceptional-order sensitivity (k·MAD).</td></tr>
+    <tr><td>Forecast engine</td><td>Method = auto | pinned; history window; forecast horizon; granularity; seasonality on/off/auto; primary accuracy metric; demand basis = <strong>gross</strong> (default) | net of returns.</td></tr>
+    <tr><td>Review &amp; ordering</td><td>Review period, ordering policy (continuous ROP vs periodic order-up-to), MOQ, order multiple (carton/pallet), order &amp; holding cost (for EOQ), round-down rule (default).</td></tr>
+    <tr><td>Lead times</td><td>Per-supplier lead time (+ optional spread/min-max); per-SKU overrides. Client-entered — see §6.</td></tr>
+    <tr><td>Promotions/events</td><td>Promo &amp; event calendar; uplift factors; auto-learn toggle; known upcoming bulk/pallet orders.</td></tr>
+    <tr><td>Lifecycle</td><td>New-product strategy (analog SKU / category prior), discontinued handling, expiry rules.</td></tr>
+  </table>
+  <div class="callout">Every config field has a documented default so a client gets a sensible forecast on day one with zero setup, then tunes only what matters to them.</div>
+</section>
+
+<!-- 10 -->
+<section id="architecture">
+  <h2 class="sec"><span class="n">10</span>Architecture &amp; data model</h2>
+  <p class="lead">How it fits the existing stack (plain-Node server, Postgres, SSE reports).</p>
+  <h3>10.1 Compute model</h3>
+  <ul>
+    <li><strong>Nightly batch engine</strong> (<code>server/forecasting/engine.js</code>) recomputes demand series, fits/scores models, and writes results to cache tables — so the client UI is instant and doesn't recompute on every page load.</li>
+    <li><strong>On-demand recompute</strong> for a single SKU when config changes (live "what-if").</li>
+    <li>Pure-JS forecasting library (<code>server/forecasting/methods/*</code>) — no external Python service needed for Phase 1–2.</li>
+    <li>Read API surfaced as a report (<code>server/reports/analytics/forecasting.js</code>, replacing the current <code>comingSoon</code> stub) + dedicated planner endpoints.</li>
+  </ul>
+  <h3>10.2 New tables</h3>
+  <pre><span class="c">-- Layered configuration (scope: client | category | sku)</span>
+forecast_config(id, client_id, scope, scope_ref, settings JSONB, updated_at)
+
+<span class="c">-- Known demand events: promos, trade orders, manual adjustments</span>
+demand_events(id, client_id, sku, type, start_date, end_date,
+              factor, qty, note, created_by)
+
+<span class="c">-- Supplier / SKU lead times (client-entered; sku NULL = supplier default)</span>
+supplier_lead_times(id, client_id, supplier, sku, lt_days,
+                    lt_spread_days, updated_at)
+
+<span class="c">-- Per-run forecast output (cached for the UI)</span>
+forecast_results(id, run_id, client_id, sku, horizon_date, grain,
+                 yhat, yhat_lo, yhat_hi, method, params JSONB)
+
+<span class="c">-- Reorder recommendations</span>
+reorder_plan(id, run_id, client_id, sku, on_hand, on_order, rop,
+             safety_stock, order_qty, order_by_date, stockout_date, flags)
+
+<span class="c">-- Accuracy tracking (backtest + live)</span>
+forecast_accuracy(id, client_id, sku, period, method, actual,
+                  forecast, abs_err, wmape, mase, bias)
+
+forecast_runs(id, client_id, started_at, finished_at, status, stats JSONB)</pre>
+  <h3>10.3 Reuse</h3>
+  <p>Leverages existing building blocks: <code>db-base.js</code> fetchers, the SSE report harness, the bundle-component expansion (from the replen work), and the sync that already lands orders/ASNs/stock.</p>
+</section>
+
+<!-- 11 -->
+<section id="ui">
+  <h2 class="sec"><span class="n">11</span>Client UI (under Inventory Planner)</h2>
+  <p class="lead">Replaces the current placeholder at <code>/app/stock/inventory-planner</code>.</p>
+  <table>
+    <tr><th>Tab / view</th><th>Contents</th></tr>
+    <tr><td><strong>Planner overview</strong></td><td>Sortable/filterable SKU table: on-hand, days of cover, projected stock-out, recommended order qty &amp; order-by date, risk flags. Bulk "build PO" action.</td></tr>
+    <tr><td><strong>SKU drill-down</strong></td><td>Demand history + forecast chart with confidence band, the cleansing applied (trade/promo/stockout markers), chosen method, accuracy for that SKU, editable overrides.</td></tr>
+    <tr><td><strong>Buying / PO plan</strong></td><td>Forward order schedule grouped by supplier; in-transit ASNs netted in.</td></tr>
+    <tr><td><strong>Accuracy</strong></td><td>Forecast vs actual-shipped charts, WMAPE/MASE/bias trend, method leaderboard, "stockouts avoided / overstock" outcomes.</td></tr>
+    <tr><td><strong>Configuration</strong></td><td>The layered config (client → category → SKU) with inline defaults and explanations.</td></tr>
+    <tr><td><strong>Events &amp; promotions</strong></td><td>Calendar to add upcoming promos/trade orders that the forecast should account for.</td></tr>
+  </table>
+  <div class="callout">Warehouse users get a read-only cross-client view for capacity/inbound planning; the rich editing experience is client-facing, per your spec.</div>
+</section>
+
+<!-- 12 -->
+<section id="phasing">
+  <h2 class="sec"><span class="n">12</span>Phased rollout</h2>
+  <table>
+    <tr><th>Phase</th><th>Scope</th><th>Outcome</th></tr>
+    <tr><td><span class="tag t-mvp">MVP<br>pilot</span></td><td><strong>Pilot clients: Serendipity, Mexeco, Vending</strong> (deliberately different sales patterns — retail-led, all-trade, and vending). Scope: trade-profile demand series + cleansing (trade/exceptional-order/stockout) · baseline + Holt-Winters + Croston/SBA · auto method-select · ROP/safety-stock/reorder qty (capital-efficient, 95%) · client-entered lead times · overview + SKU drill-down · WMAPE/MASE backtest · client-level config.</td><td>Validate accuracy across 3 very different clients before wider rollout.</td></tr>
+    <tr><td><span class="tag t-p2">Phase 2</span></td><td>Promotions calendar &amp; uplift modelling · causal regression w/ regressors · ensembles · category/SKU config overrides · PO-plan builder · accuracy outcome simulation.</td><td>Higher accuracy, promo-aware, finer control.</td></tr>
+    <tr><td><span class="tag t-p3">Phase 3</span></td><td>Seasonality maturity (≥18–24 mo history) · new-product analog modelling · auto-reselection on drift · ARIMA/ETS auto · optional ML backend · multi-warehouse allocation.</td><td>Self-tuning, best-in-class.</td></tr>
+  </table>
+</section>
+
+<!-- 13 -->
+<section id="questions">
+  <h2 class="sec"><span class="n">13</span>Decisions confirmed</h2>
+  <p class="lead">Direction agreed — these are now baked into the plan above and drive implementation.</p>
+  <table>
+    <tr><th>#</th><th>Decision</th></tr>
+    <tr><td>1</td><td><strong>Trade is per-client, not a blanket exclusion.</strong> Profiles: retail / mixed / all-trade. Trade channels = Manual Input, Amazon FBA, TikTok FBT (configurable). Regular bulk customers are baseline demand and kept; only <em>exceptional</em> orders relative to a SKU's own norm (e.g. Mexeco's PARSLEY IN TIME pallet orders) are de-peaked and planned separately. (§4.1)</td></tr>
+    <tr><td>2</td><td><strong>Service level: 95%, client-wide</strong> — simpler and clearer than per-tier. (§7, §9)</td></tr>
+    <tr><td>3</td><td><strong>Gross demand</strong> — units ordered, not reduced by returns. (§3, §9)</td></tr>
+    <tr><td>4</td><td><strong>Lead times are client-configured</strong> per supplier and per SKU — <em>not</em> derived from ASNs (we don't know PO dates). ASNs still used for on-order netting. (§6)</td></tr>
+    <tr><td>5</td><td><strong>Capital efficiency</strong> — lean toward less stock; avoid overstock while holding the 95% target. (§7)</td></tr>
+    <tr><td>6</td><td><strong>Pilot first: Serendipity, Mexeco, Vending</strong> — three deliberately different sales patterns to stress-test the engine before wider rollout. (§12)</td></tr>
+  </table>
+</section>
+
+<footer>Premium Fulfilment / ARAnalytics — Forecasting Module plan · for review before implementation</footer>
+</main>
+</div>
+</body>
+</html>

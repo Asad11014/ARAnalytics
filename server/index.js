@@ -14,6 +14,7 @@ const calendar    = require('./calendar');
 const picklist    = require('./picklist');
 const replen      = require('./replen');
 const returns     = require('./returns');
+const forecasting = require('./forecasting/api');
 const { sendEmail } = require('./email');
 const { ensureCoreSchema } = require('./schema');
 const { runFullSync, runIncrementalSync, getSyncStatus } = require('./sync');
@@ -233,6 +234,68 @@ const server = http.createServer(async (req, res) => {
       } catch (err) {
         return res.json(500, { error: err.message });
       }
+    }
+
+    // ── Forecasting / Inventory Planner ───────────────────────────────────────
+    if (pathname === '/api/forecasting/plan' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      try { return await forecasting.plan(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/forecasting/forecast' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      try { return await forecasting.forecast(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/forecasting/run' && req.method === 'POST') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await forecasting.run(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/forecasting/config' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      try { return await forecasting.getConfig(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/forecasting/config' && req.method === 'PUT') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await forecasting.putConfig(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/forecasting/lead-time' && req.method === 'POST') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await forecasting.saveLeadTime(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/forecasting/lead-time' && req.method === 'DELETE') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await forecasting.deleteLeadTime(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/forecasting/event' && req.method === 'POST') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await forecasting.saveEvent(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/forecasting/event' && req.method === 'DELETE') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      if (session.demo) return res.json(403, { error: 'Disabled in demo' });
+      try { return await forecasting.deleteEvent(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
     }
 
     // ── Product overview (all of a client's products + on-hand stock) ──────────

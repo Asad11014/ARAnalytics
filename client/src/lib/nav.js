@@ -111,6 +111,7 @@ export const WAREHOUSE_NAV = [
   {
     type: 'group', id: 'figures', label: 'Figures', icon: '📈',
     items: [
+      { to: '/app/stock/inventory-planner', label: 'Inventory Planner',  icon: '📦' },
       { to: '/app/inventory/health-score',  label: 'Health Score',      icon: '❤️' },
       { to: '/app/inventory/snapshot',      label: 'Live Snapshot',     icon: '📷' },
       { to: '/app/inventory/aging',         label: 'Aging Report',      icon: '⏳' },

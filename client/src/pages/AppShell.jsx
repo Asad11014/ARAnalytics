@@ -28,6 +28,7 @@ import SalesTrend  from './analytics/SalesTrend'
 // Client Hub
 import ReportsIndex    from './ReportsIndex'
 import ProductOverview from './stock/ProductOverview'
+import InventoryPlanner from './stock/InventoryPlanner'
 import SeoPage         from './SeoPage'
 import HelpGuides      from './help/HelpGuides'
 import HelpGuideView   from './help/HelpGuideView'
@@ -147,7 +148,7 @@ function AppShellLayout() {
           {/* Stock Analytics */}
           <Route path="stock/reports"           element={<ReportsIndex />} />
           <Route path="stock/product-overview"  element={<ProductOverview />} />
-          <Route path="stock/inventory-planner" element={<Placeholder title="Inventory Planner" blurb="Demand forecasting and reorder planning to keep your best-sellers in stock without over-ordering." icon="📦" />} />
+          <Route path="stock/inventory-planner" element={<InventoryPlanner />} />
           <Route path="stock/excess"            element={<Placeholder title="Excess Stock" blurb="Surface slow-moving and overstocked SKUs so you can act on tied-up capital." icon="🗄️" />} />
 
           {/* Returns */}

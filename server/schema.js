@@ -423,6 +423,137 @@ async function ensureCoreSchema() {
   await query(`CREATE INDEX IF NOT EXISTS asns_updated_at_idx              ON asns (updated_at DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS invoices_client_date_idx          ON invoices (client_id, invoice_date DESC)`);
   await query(`CREATE INDEX IF NOT EXISTS sync_jobs_started_at_idx          ON sync_jobs (started_at DESC)`);
+
+  // ── Forecasting / Inventory Planner ─────────────────────────────────────────
+  // Per-client demand forecasting + reorder planning. See docs/forecasting-module-plan.html.
+
+  // Layered configuration (scope: 'client' | 'category' | 'sku'). settings JSONB
+  // holds only overrides; engine defaults fill the rest.
+  await query(`
+    CREATE TABLE IF NOT EXISTS forecast_config (
+      id         SERIAL PRIMARY KEY,
+      client_id  INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      scope      TEXT NOT NULL DEFAULT 'client',   -- client | category | sku
+      scope_ref  TEXT,                              -- category name / sku (NULL for client scope)
+      settings   JSONB NOT NULL DEFAULT '{}',
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (client_id, scope, scope_ref)
+    )
+  `);
+
+  // Known demand events: promotions, scheduled trade/pallet orders, manual adjustments.
+  await query(`
+    CREATE TABLE IF NOT EXISTS demand_events (
+      id         SERIAL PRIMARY KEY,
+      client_id  INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      sku        TEXT,                              -- NULL = applies to category/all
+      category   TEXT,
+      type       TEXT NOT NULL,                     -- promo | trade_order | adjustment
+      start_date DATE NOT NULL,
+      end_date   DATE,
+      factor     NUMERIC(8,3),                      -- uplift multiplier (promo)
+      qty        INTEGER,                           -- known absolute units (trade order)
+      note       TEXT,
+      created_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Client-entered lead times. sku NULL = supplier default; sku set = override.
+  await query(`
+    CREATE TABLE IF NOT EXISTS supplier_lead_times (
+      id             SERIAL PRIMARY KEY,
+      client_id      INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      supplier       TEXT,
+      sku            TEXT,
+      lt_days        INTEGER NOT NULL,
+      lt_spread_days INTEGER DEFAULT 0,             -- ± variability for safety stock
+      updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (client_id, supplier, sku)
+    )
+  `);
+
+  // One row per engine run.
+  await query(`
+    CREATE TABLE IF NOT EXISTS forecast_runs (
+      id          SERIAL PRIMARY KEY,
+      client_id   INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      status      TEXT NOT NULL DEFAULT 'running',  -- running | done | error
+      stats       JSONB NOT NULL DEFAULT '{}',
+      error       TEXT,
+      started_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      finished_at TIMESTAMPTZ
+    )
+  `);
+
+  // Forecast time-series output (one row per sku per future bucket).
+  await query(`
+    CREATE TABLE IF NOT EXISTS forecast_results (
+      id           SERIAL PRIMARY KEY,
+      run_id       INTEGER NOT NULL REFERENCES forecast_runs(id) ON DELETE CASCADE,
+      client_id    INTEGER NOT NULL,
+      sku          TEXT NOT NULL,
+      grain        TEXT NOT NULL DEFAULT 'week',     -- week | month
+      bucket_date  DATE NOT NULL,                    -- start of the forecast bucket
+      yhat         NUMERIC(12,3) NOT NULL,
+      yhat_lo      NUMERIC(12,3),
+      yhat_hi      NUMERIC(12,3),
+      method       TEXT
+    )
+  `);
+
+  // Reorder recommendation (one row per sku per run — the planner overview).
+  await query(`
+    CREATE TABLE IF NOT EXISTS reorder_plan (
+      id             SERIAL PRIMARY KEY,
+      run_id         INTEGER NOT NULL REFERENCES forecast_runs(id) ON DELETE CASCADE,
+      client_id      INTEGER NOT NULL,
+      sku            TEXT NOT NULL,
+      name           TEXT,
+      demand_class   TEXT,
+      method         TEXT,
+      weekly_demand  NUMERIC(12,3),
+      on_hand        INTEGER,
+      on_order       INTEGER,
+      allocated      INTEGER,
+      lead_days      INTEGER,
+      safety_stock   NUMERIC(12,3),
+      reorder_point  NUMERIC(12,3),
+      order_qty      INTEGER,
+      order_by_date  DATE,
+      stockout_date  DATE,
+      weeks_cover    NUMERIC(8,2),
+      wmape          NUMERIC(8,3),
+      flags          JSONB NOT NULL DEFAULT '[]'
+    )
+  `);
+  // Transparency fields for the drill-down (added post-hoc; no-op if present).
+  await query(`ALTER TABLE reorder_plan ADD COLUMN IF NOT EXISTS mase              NUMERIC(8,3)`);
+  await query(`ALTER TABLE reorder_plan ADD COLUMN IF NOT EXISTS bias              NUMERIC(12,3)`);
+  await query(`ALTER TABLE reorder_plan ADD COLUMN IF NOT EXISTS exceptional_units INTEGER`);
+  await query(`ALTER TABLE reorder_plan ADD COLUMN IF NOT EXISTS trade_share       NUMERIC(5,2)`);
+  await query(`ALTER TABLE reorder_plan ADD COLUMN IF NOT EXISTS price             NUMERIC(12,2)`);
+
+  // Accuracy (backtest + live), one row per sku per evaluated period.
+  await query(`
+    CREATE TABLE IF NOT EXISTS forecast_accuracy (
+      id         SERIAL PRIMARY KEY,
+      client_id  INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      sku        TEXT NOT NULL,
+      period     DATE NOT NULL,
+      method     TEXT,
+      actual     NUMERIC(12,3),
+      forecast   NUMERIC(12,3),
+      abs_err    NUMERIC(12,3),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await query(`CREATE INDEX IF NOT EXISTS forecast_results_run_sku_idx  ON forecast_results (run_id, sku)`);
+  await query(`CREATE INDEX IF NOT EXISTS reorder_plan_run_idx          ON reorder_plan (run_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS reorder_plan_client_idx       ON reorder_plan (client_id)`);
+  await query(`CREATE INDEX IF NOT EXISTS forecast_runs_client_idx      ON forecast_runs (client_id, started_at DESC)`);
+  await query(`CREATE INDEX IF NOT EXISTS forecast_accuracy_client_idx  ON forecast_accuracy (client_id, sku)`);
 }
 
 module.exports = { ensureCoreSchema };
