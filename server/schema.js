@@ -373,25 +373,6 @@ async function ensureCoreSchema() {
     )
   `);
 
-  // ── Quotations ────────────────────────────────────────────────────────────
-
-  await query(`
-    CREATE TABLE IF NOT EXISTS quotes (
-      id            SERIAL PRIMARY KEY,
-      warehouse_id  INTEGER REFERENCES warehouses(id) ON DELETE SET NULL,
-      client_name   TEXT,
-      client_email  TEXT,
-      status        TEXT NOT NULL DEFAULT 'draft',
-      valid_until   DATE,
-      notes         TEXT,
-      line_items    JSONB NOT NULL DEFAULT '[]',
-      total_monthly NUMERIC(12,2),
-      total_setup   NUMERIC(12,2),
-      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )
-  `);
-
   // ── Returns ───────────────────────────────────────────────────────────────
   // Shared workflow record: a client books a return, warehouse books the
   // collection. Status is the single source of truth for every user with access.

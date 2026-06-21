@@ -6,12 +6,6 @@ export const TOP_LINKS = [
   { to: '/app/calendar',   label: 'Calendar',   icon: '📅' },
 ];
 
-// Quotes — collapsible section (mirrors the Reports layout)
-export const QUOTE_ITEMS = [
-  { to: '/app/quotations', label: 'New Quote', icon: '💬' },
-  { to: '/app/my-quotes',  label: 'My Quotes', icon: '📋' },
-];
-
 // Report sub-categories within the single "Reports" section.
 // Each group has a label, optional warehouseOnly flag, and items.
 export const REPORT_GROUPS = [
@@ -99,6 +93,39 @@ export const CLIENT_NAV = [
   },
   { type: 'link', to: '/app/seo',  label: 'Website SEO', icon: '🖥️' },
   { type: 'link', to: '/app/help', label: 'Help Guides', icon: '❓' },
+];
+
+// ── PF Warehouse Hub navigation (warehouse users) ─────────────────────────────
+// Tools  = operational action tools; Figures = analytical / numbers reports.
+export const WAREHOUSE_NAV = [
+  { type: 'link', to: '/app', label: 'Dashboard', icon: '⬛', exact: true },
+  {
+    type: 'group', id: 'tools', label: 'Tools', icon: '🛠️',
+    items: [
+      { to: '/app/operations/fulfillment',  label: 'Fulfillment',         icon: '📤' },
+      { to: '/app/operations/eod-despatch', label: 'End-of-Day Despatch', icon: '🚚' },
+      { to: '/app/operations/pick-list',    label: 'Pick List',           icon: '📝' },
+      { to: '/app/operations/replen',       label: 'Replen List',         icon: '🔁' },
+    ],
+  },
+  {
+    type: 'group', id: 'figures', label: 'Figures', icon: '📈',
+    items: [
+      { to: '/app/inventory/health-score',  label: 'Health Score',      icon: '❤️' },
+      { to: '/app/inventory/snapshot',      label: 'Live Snapshot',     icon: '📷' },
+      { to: '/app/inventory/aging',         label: 'Aging Report',      icon: '⏳' },
+      { to: '/app/inventory/velocity',      label: 'SKU Velocity',      icon: '⚡' },
+      { to: '/app/financial/profitability', label: 'Revenue Breakdown', icon: '💹' },
+      { to: '/app/analytics/best-sellers',  label: 'Best Sellers',      icon: '🏆' },
+      { to: '/app/analytics/sales-trend',   label: 'Sales Trend',       icon: '📊' },
+    ],
+  },
+  { type: 'link', to: '/app/operations/returns-hub', label: 'Returns Portal',      icon: '↩️' },
+  { type: 'link', to: '/app/shipping-requests',      label: 'Shipping Requests',   icon: '🚢' },
+  { type: 'link', to: '/app/extras-requests',        label: 'Requests for Extras', icon: '✨' },
+  { type: 'link', to: '/app/calendar',               label: 'Warehouse Calendar',  icon: '📅' },
+  { type: 'link', to: '/app/todo',                   label: 'To Do Lists',         icon: '✅' },
+  { type: 'link', to: '/app/help',                   label: 'Help Guides',         icon: '❓' },
 ];
 
 // Flat list of all report items — useful for route matching

@@ -6,8 +6,6 @@ import Sidebar from '../components/Sidebar'
 import pfLogo from '../assets/pf-hub-logo.png'
 import Dashboard   from './Dashboard'
 import Calendar    from './Calendar'
-import Quotations  from './Quotations'
-import MyQuotes    from './MyQuotes'
 
 // Inventory
 import HealthScore      from './inventory/HealthScore'
@@ -120,8 +118,6 @@ function AppShellLayout() {
         <Routes>
           <Route index element={<Dashboard />} />
           <Route path="calendar"    element={<Calendar />} />
-          <Route path="quotations"  element={<Quotations />} />
-          <Route path="my-quotes"   element={<MyQuotes />} />
 
           {/* Inventory */}
           <Route path="inventory/health-score"  element={<HealthScore />} />
@@ -134,6 +130,11 @@ function AppShellLayout() {
           <Route path="operations/eod-despatch" element={<WarehouseOnly><EodDespatch /></WarehouseOnly>} />
           <Route path="operations/pick-list"    element={<WarehouseOnly><PickList /></WarehouseOnly>} />
           <Route path="operations/replen"       element={<WarehouseOnly><ReplenList /></WarehouseOnly>} />
+
+          {/* Warehouse Hub — placeholders (warehouse only) */}
+          <Route path="shipping-requests" element={<WarehouseOnly><Placeholder title="Shipping Requests" blurb="All shipping form requests from clients (collections, pallets, freight) will appear here to action." icon="🚢" /></WarehouseOnly>} />
+          <Route path="extras-requests"   element={<WarehouseOnly><Placeholder title="Requests for Extras" blurb="Client requests for extras — SEO, assembly and one-offs — will appear here." icon="✨" /></WarehouseOnly>} />
+          <Route path="todo"              element={<WarehouseOnly><Placeholder title="To Do Lists" blurb="Team to-do lists — a future home for warehouse tasks (eventually replacing Trello)." icon="✅" /></WarehouseOnly>} />
 
           {/* Financial */}
           <Route path="financial/profitability" element={<Profitability />} />
@@ -158,7 +159,7 @@ function AppShellLayout() {
           <Route path="shipping/collection"     element={<Placeholder title="Stock Collection Request" blurb="Request a collection of your stock via a simple form." icon="🚚" />} />
           <Route path="shipping/pallets"        element={<Placeholder title="Pallets & Arctic Pricing" blurb="Request pricing for palletised freight and artic (articulated lorry) transport." icon="🚛" />} />
           <Route path="shipping/freight"        element={<Placeholder title="Freight Forwarding" blurb="Submit a freight forwarding request and we’ll come back to you with options." icon="🛫" />} />
-          <Route path="shipping/history"        element={<MyQuotes />} />
+          <Route path="shipping/history"        element={<Placeholder title="Shipping History" blurb="A record of your previous bespoke quotes and shipments will appear here." icon="🕘" />} />
 
           {/* Invoice Analysis */}
           <Route path="invoice/overview"        element={<Profitability />} />

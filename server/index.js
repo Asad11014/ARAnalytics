@@ -11,7 +11,6 @@ const proxy     = require('./proxy');
 const reports   = require('./reports/index');
 const dashboard = require('./reports/dashboard');
 const calendar    = require('./calendar');
-const quotations  = require('./quotations');
 const picklist    = require('./picklist');
 const replen      = require('./replen');
 const returns     = require('./returns');
@@ -27,7 +26,6 @@ const DEMO_MODE = !!process.env.DEMO_MODE;
 ensureCoreSchema()
   .then(() => Promise.all([
     calendar.ensureSchema(),
-    quotations.ensureSchema(),
   ]))
   .then(() => { if (DEMO_MODE) return seedDemo(); })
   .catch(e => console.error('[schema] Bootstrap error:', e.message));
@@ -214,17 +212,6 @@ const server = http.createServer(async (req, res) => {
       return calendar.handle(req, res, url, session, req.method, calEventMatch[1]);
     }
 
-    // ── Quotes ────────────────────────────────────────────────────────────────
-    if (pathname === '/api/quotes' && (req.method === 'GET' || req.method === 'POST')) {
-      const session = auth.requireSession(req, res);
-      if (!session) return;
-      if (blockDemoWrite(session, req, res)) return;
-      try {
-        return await quotations.handle(req, res, url, session, req.method);
-      } catch (err) {
-        return res.json(500, { error: err.message });
-      }
-    }
 
     // ── Pick list (warehouse only) ────────────────────────────────────────────
     if (pathname === '/api/picklist' && req.method === 'GET') {

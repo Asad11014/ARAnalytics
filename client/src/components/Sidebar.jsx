@@ -2,13 +2,8 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useSession } from '../context/SessionContext'
 import { useUI }      from '../context/UIContext'
-import { TOP_LINKS, REPORT_GROUPS, QUOTE_ITEMS, CLIENT_NAV } from '../lib/nav'
+import { CLIENT_NAV, WAREHOUSE_NAV } from '../lib/nav'
 import clsx from 'clsx'
-
-const BADGE = {
-  new:  'bg-gold/20 text-gold font-bold',
-  soon: 'bg-white/10 text-white/50',
-}
 
 function SyncButton({ incrementalOnly = false }) {
   const [phase,       setPhase]    = useState('idle')  // idle | syncing | done | partial | error
@@ -216,19 +211,18 @@ function CollapsibleGroup({ group, closeSidebar, depth = 0, open: openProp, onTo
   )
 }
 
-// PF Client Hub navigation — flat links + collapsible groups (clients only).
-function ClientNav({ closeSidebar }) {
+// Flat links + collapsible groups with accordion behaviour (one group open at a
+// time). Used for both the Client Hub and Warehouse Hub menus.
+function AccordionNav({ nav, closeSidebar }) {
   const location = useLocation()
-  // Accordion: only one group expanded at a time. Default to the group matching
-  // the current route.
   const [openId, setOpenId] = useState(() => {
-    const g = CLIENT_NAV.find(e => e.type === 'group' && e.items.some(i => location.pathname.startsWith(i.to)))
+    const g = nav.find(e => e.type === 'group' && e.items.some(i => location.pathname.startsWith(i.to)))
     return g?.id || null
   })
 
   return (
     <div className="space-y-0.5">
-      {CLIENT_NAV.map(entry => entry.type === 'link' ? (
+      {nav.map(entry => entry.type === 'link' ? (
         <div key={entry.to} className="px-2">
           <NavLink
             to={entry.to}
@@ -258,27 +252,13 @@ export default function Sidebar() {
   const { session, warehouseId, setWarehouseId, selectedClientId, setSelectedClientId } = useSession()
   const { sidebarOpen, closeSidebar } = useUI()
   const navigate   = useNavigate()
-  const location   = useLocation()
   const warehouses = session?.warehouses || []
   const clients    = session?.clients    || []
-
-  const [reportsOpen, setReportsOpen] = useState(() =>
-    REPORT_GROUPS.some(g => g.items.some(item => location.pathname.startsWith(item.to)))
-  )
-
-  const [quotesOpen, setQuotesOpen] = useState(() =>
-    QUOTE_ITEMS.some(item => location.pathname.startsWith(item.to))
-  )
 
   async function logout() {
     await fetch('/api/logout', { method: 'POST' })
     navigate('/')
   }
-
-  const visibleGroups = REPORT_GROUPS
-    .filter(g => !g.warehouseOnly || session?.isWarehouse)
-    .map(g => ({ ...g, items: g.items.filter(it => !(session?.demo && it.hideInDemo)) }))
-    .filter(g => g.items.length)
 
   return (
     <aside className={clsx(
@@ -317,144 +297,10 @@ export default function Sidebar() {
           </div>
         )}
 
-        {/* ── Client Hub nav (client users only) ── */}
-        {!session?.isWarehouse && <ClientNav closeSidebar={closeSidebar} />}
-
-        {/* ── Warehouse Hub nav (warehouse users only) ── */}
-        {session?.isWarehouse && (
-        <>
-        <div className="px-2 space-y-0.5">
-          {/* Top-level standalone links */}
-          {TOP_LINKS.map(link => (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.exact}
-              onClick={closeSidebar}
-              className={({ isActive }) => clsx(
-                'flex items-center gap-2.5 px-3 py-2 rounded text-[13px] font-medium transition-all no-underline',
-                isActive
-                  ? 'bg-white/10 text-white font-semibold border-l-2 border-gold'
-                  : 'text-white/70 hover:bg-white/5 hover:text-white border-l-2 border-transparent'
-              )}
-            >
-              <span className="text-base w-5 text-center flex-shrink-0">{link.icon}</span>
-              {link.label}
-            </NavLink>
-          ))}
-        </div>
-
-        <div className="h-px bg-white/10 mx-4 my-2" />
-
-        {/* Quotes — collapsible section */}
-        <div>
-          <button
-            onClick={() => setQuotesOpen(o => !o)}
-            className="w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors hover:bg-white/5 group select-none"
-          >
-            <span className="text-base w-5 text-center flex-shrink-0">💬</span>
-            <span className={clsx(
-              'flex-1 font-mono text-[10px] uppercase tracking-widest font-bold',
-              quotesOpen ? 'text-gold' : 'text-white/50 group-hover:text-white'
-            )}>
-              Quotes
-            </span>
-            <span className={clsx('font-mono text-[10px] text-white/40 transition-transform duration-200', quotesOpen && 'rotate-90')}>
-              ▶
-            </span>
-          </button>
-
-          <div className={clsx(
-            'overflow-hidden transition-all duration-200',
-            quotesOpen ? 'max-h-[400px] opacity-100' : 'max-h-0 opacity-0'
-          )}>
-            {QUOTE_ITEMS.map(item => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={closeSidebar}
-                className={({ isActive }) => clsx(
-                  'flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-all no-underline mx-2 rounded border-l-2',
-                  isActive
-                    ? 'bg-white/10 text-white font-semibold border-gold'
-                    : 'text-white/70 hover:bg-white/5 hover:text-white border-transparent'
-                )}
-              >
-                <span className="text-sm flex-shrink-0">{item.icon}</span>
-                <span className="flex-1 truncate">{item.label}</span>
-              </NavLink>
-            ))}
-          </div>
-        </div>
-
-        <div className="h-px bg-white/10 mx-4 my-2" />
-
-        {/* Reports — single collapsible section */}
-        <div>
-          <button
-            onClick={() => setReportsOpen(o => !o)}
-            className="w-full flex items-center gap-2.5 px-4 py-2 text-left transition-colors hover:bg-white/5 group select-none"
-          >
-            <span className="text-base w-5 text-center flex-shrink-0">📊</span>
-            <span className={clsx(
-              'flex-1 font-mono text-[10px] uppercase tracking-widest font-bold',
-              reportsOpen ? 'text-gold' : 'text-white/50 group-hover:text-white'
-            )}>
-              Reports
-            </span>
-            <span className={clsx('font-mono text-[10px] text-white/40 transition-transform duration-200', reportsOpen && 'rotate-90')}>
-              ▶
-            </span>
-          </button>
-
-          <div className={clsx(
-            'overflow-hidden transition-all duration-200',
-            reportsOpen ? 'max-h-[800px] opacity-100' : 'max-h-0 opacity-0'
-          )}>
-            {visibleGroups.map((group, gi) => (
-              <div key={group.id}>
-                {/* Sub-category label */}
-                <div className="px-4 pt-2 pb-0.5">
-                  <span className="font-mono text-[8px] uppercase tracking-[0.15em] text-white/40 font-bold">
-                    {group.label}
-                  </span>
-                </div>
-
-                {/* Items */}
-                {group.items.map(item => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    onClick={closeSidebar}
-                    className={({ isActive }) => clsx(
-                      'flex items-center gap-2 pl-7 pr-3 py-1.5 text-[12px] transition-all no-underline mx-2 rounded border-l-2',
-                      isActive
-                        ? 'bg-white/10 text-white font-semibold border-gold'
-                        : 'text-white/70 hover:bg-white/5 hover:text-white border-transparent'
-                    )}
-                  >
-                    <span className="text-sm flex-shrink-0">{item.icon}</span>
-                    <span className="flex-1 truncate">
-                      {(!session?.isWarehouse && item.clientLabel) ? item.clientLabel : item.label}
-                    </span>
-                    {item.badge && (
-                      <span className={clsx('font-mono text-[8px] px-1 py-0.5 rounded uppercase tracking-wide', BADGE[item.badge])}>
-                        {item.badge}
-                      </span>
-                    )}
-                  </NavLink>
-                ))}
-
-                {/* Divider between groups, but not after the last one */}
-                {gi < visibleGroups.length - 1 && (
-                  <div className="h-px bg-white/10 mx-4 mt-2" />
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-        </>
-        )}
+        {/* ── Navigation (Client Hub or Warehouse Hub) ── */}
+        {!session?.isWarehouse
+          ? <AccordionNav nav={CLIENT_NAV} closeSidebar={closeSidebar} />
+          : <AccordionNav nav={WAREHOUSE_NAV} closeSidebar={closeSidebar} />}
       </div>
 
       {/* Footer — always pinned */}
