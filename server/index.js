@@ -15,6 +15,7 @@ const picklist    = require('./picklist');
 const replen      = require('./replen');
 const returns     = require('./returns');
 const forecasting = require('./forecasting/api');
+const storage     = require('./storage');
 const { sendEmail } = require('./email');
 const { ensureCoreSchema } = require('./schema');
 const { runFullSync, runIncrementalSync, getSyncStatus } = require('./sync');
@@ -295,6 +296,26 @@ const server = http.createServer(async (req, res) => {
       if (!session) return;
       if (session.demo) return res.json(403, { error: 'Disabled in demo' });
       try { return await forecasting.deleteEvent(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+
+    // ── Storage calculator + Excess stock (client-facing, DB-backed) ──────────
+    if (pathname === '/api/storage' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      try { return await storage.storageBreakdown(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/excess' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      try { return await storage.excessStock(req, res, url, session); }
+      catch (err) { return res.json(500, { error: err.message }); }
+    }
+    if (pathname === '/api/storage/cost' && req.method === 'GET') {
+      const session = auth.requireSession(req, res);
+      if (!session) return;
+      try { return await storage.storageCost(req, res, url, session); }
       catch (err) { return res.json(500, { error: err.message }); }
     }
 
